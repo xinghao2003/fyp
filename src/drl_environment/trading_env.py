@@ -1,9 +1,8 @@
-# trading_env.py
 # Core DRL trading environment for stock trading simulation
 import numpy as np
 import pandas as pd
 from gymnasium import Env, spaces
-from typing import Callable, Optional, Dict, Any, Tuple, Union
+from typing import Callable, Optional, Dict, Any, Tuple, Union, Sequence, cast
 
 
 class TradingEnv(Env):
@@ -21,7 +20,15 @@ class TradingEnv(Env):
                  transaction_cost_pct: float = 0.001,
                  allow_short: bool = False,
                  max_stock_per_trade: int = 100,
+                 action_space_type: str = 'multidiscrete',
                  **kwargs):
+        # Allow agent_type to override action_space_type if passed in kwargs
+        agent_type = kwargs.pop('agent_type', None)
+        if agent_type is not None:
+            if agent_type.lower() == 'dqn':
+                action_space_type = 'discrete'
+            else:
+                action_space_type = 'multidiscrete'
         super().__init__()
         self.df = df.reset_index(drop=True)
         self.initial_cash = initial_cash
@@ -40,7 +47,19 @@ class TradingEnv(Env):
         # action_type: 0 = hold, 1 = buy, 2 = sell
         # units: 1 to max_stock_per_trade
         self.max_stock_per_trade = max_stock_per_trade
-        self.action_space = spaces.MultiDiscrete([3, max_stock_per_trade + 1])
+        self.action_space_type = action_space_type.lower()
+
+        if self.action_space_type == 'multidiscrete':
+            # MultiDiscrete action space: [action_type, units]
+            self.action_space = spaces.MultiDiscrete(
+                [3, max_stock_per_trade + 1])
+        else:
+            # Discrete action space: converted to (3 * (max_stock_per_trade + 1)) options
+            # 0 = hold with 0 units
+            # 1 to max_stock_per_trade = buy with 1 to max_stock_per_trade units
+            # max_stock_per_trade+1 to 2*max_stock_per_trade = sell with 1 to max_stock_per_trade units
+            self.action_space = spaces.Discrete(1 + 2 * max_stock_per_trade)
+
         # Observation: [price, cash, position]
         # Use concrete large negative number instead of -inf to avoid dtype issues
         self.observation_space = spaces.Box(
@@ -65,24 +84,45 @@ class TradingEnv(Env):
 
     def _get_obs(self) -> np.ndarray:
         price = self._get_price()
-        return np.array([price, self.cash, self.position], dtype=np.float32)
+        return np.array([float(price), float(self.cash), float(self.position)], dtype=np.float32)
 
     def _get_price(self) -> float:
-        # Prevent out-of-bounds access
-        if self.current_step >= len(self.df):
-            # Optionally, return the last price or handle as done
-            return float(self.df.iloc[-1]['close'])
-        return float(self.df.loc[self.current_step, 'close'])
+        """
+        Return the close price for the current bar.
+        We use `cast` only to convince the static type checker that the value
+        really is float-like; at run time a NumPy scalar is perfectly valid.
+        """
+        idx = min(self.current_step, len(self.df) - 1)
+        price_scalar = self.df.at[idx, 'close']            # type: Any
+        return float(cast(float, price_scalar))
 
-    def step(self, action: Union[int, np.ndarray, tuple]) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+    def step(
+        self, action: Union[int, Sequence[int]]
+    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         # Accepts action as [action_type, units]
-        if isinstance(action, (np.ndarray, list, tuple)):
+        if self.action_space_type == 'multidiscrete':
+            # Accept np.ndarray / list / tuple
+            if not isinstance(action, Sequence):
+                # Legacy single-value action → treat as “hold one unit”
+                action = [int(action), 1]
             action_type, units = int(action[0]), int(action[1])
+        else:  # discrete action space
+            # Make absolutely sure the object really is an int for the checker
+            if not isinstance(action, (int, np.integer)):
+                raise TypeError(
+                    f"Discrete action space expects an int, got {type(action)}"
+                )
+            action_int: int = int(action)
+            action_type = 1 + (action_int - 1) // self.max_stock_per_trade
+            units = (action_int - 1) % self.max_stock_per_trade + 1
+
+        # Validate action format for each action space type
+        if self.action_space_type == 'multidiscrete':
+            assert self.action_space.contains(
+                [action_type, units]), f"Invalid action: {[action_type, units]}"
         else:
-            # fallback for legacy single int actions
-            action_type, units = int(action), 1
-        assert self.action_space.contains(
-            [action_type, units]), f"Invalid action: {[action_type, units]}"
+            assert self.action_space.contains(
+                action), f"Invalid action: {action}"
         price = self._get_price()
         done = False
         truncated = False
@@ -92,13 +132,14 @@ class TradingEnv(Env):
         if action_type == 1:  # Buy
             max_affordable = int(
                 self.cash // (price * (1 + self.transaction_cost_pct)))
-            buy_units = min(units, max_affordable, self.max_stock_per_trade)
+            buy_units = min(int(units), max_affordable,
+                            self.max_stock_per_trade)
             if buy_units > 0:
                 cost = buy_units * price * (1 + self.transaction_cost_pct)
                 self.cash -= cost
                 self.position += buy_units
         elif action_type == 2:  # Sell
-            sell_units = min(units, abs(self.position))
+            sell_units = min(int(units), abs(self.position))
             if self.position > 0 and sell_units > 0:
                 proceeds = sell_units * price * (1 - self.transaction_cost_pct)
                 self.cash += proceeds
@@ -135,44 +176,12 @@ class TradingEnv(Env):
         return self._get_obs(), float(reward), done, truncated, info
 
     def render(self, mode='human'):
-        print(f"Step: {self.current_step}, Price: {self._get_price():.2f}, Cash: {self.cash:.2f}, Position: {self.position}, Total Asset: {self.total_asset:.2f}")
+        import logging
+        logging.info(
+            f"Step: {self.current_step}, Price: {self._get_price():.2f}, Cash: {self.cash:.2f}, Position: {self.position}, Total Asset: {self.total_asset:.2f}")
 
     def get_history(self):
         return pd.DataFrame(self.history)
 
     def seed(self, seed=None):
         np.random.seed(seed)
-
-
-"""
-Custom trading environment compatible with DRL libraries (e.g., extending FinRL or OpenAI Gym).
-Defines state spaces, action spaces, and reward mechanism.
-"""
-
-# import gym # or from finrl.env.env_stocktrading import StockTradingEnv
-
-# class CustomTradingEnv(gym.Env): # or class CustomTradingEnv(StockTradingEnv):
-#     def __init__(self, df, **kwargs):
-#         super().__init__(df, **kwargs)
-#         # Define action and observation space
-#         # They must be gym.spaces objects
-#         # Example when using discrete actions:
-#         # self.action_space = spaces.Discrete(N_DISCRETE_ACTIONS)
-#         # Example for using image as input (channel-first; channel-last also works):
-#         # self.observation_space = spaces.Box(low=0, high=255,
-#         #                                     shape=(N_CHANNELS, HEIGHT, WIDTH), dtype=np.uint8)
-#         pass
-
-#     def step(self, action):
-#         # Execute one time step within the environment
-#         pass
-
-#     def reset(self):
-#         # Reset the state of the environment to an initial state
-#         pass
-
-#     def render(self, mode='human', close=False):
-#         # Render the environment to the screen
-#         pass
-
-pass

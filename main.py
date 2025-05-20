@@ -3,19 +3,26 @@ Main script to run experiments, training, or evaluation pipelines.
 This script will serve as the primary entry point to orchestrate different project workflows.
 """
 
-
 import argparse
 import os
+import logging
 from src.config import settings
+import pandas as pd
+
 from src.data_ingestion.collectors import AlphaVantageCollector
 from src.data_ingestion.parsers import parse_alpha_vantage_csv
-import pandas as pd
-# from src.training import train_agent # Example import
-# from src.evaluation import backtester # Example import
+
+# Setup standardized logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 def run_data_pipeline():
-    print("Running data ingestion and parsing pipeline...")
+    logger.info("Running data ingestion and parsing pipeline...")
     # Set output directory
     output_dir = os.path.join(os.path.dirname(__file__), 'data', 'raw')
     os.makedirs(output_dir, exist_ok=True)
@@ -31,11 +38,11 @@ def run_data_pipeline():
             'AAPL', interval='1d', outputsize='full')
         alpha_path = os.path.join(output_dir, 'AAPL_alpha_vantage.csv')
         alpha_data.to_csv(alpha_path)
-        print(f"AAPL Alpha Vantage data saved to {alpha_path}")
+        logger.info(f"AAPL Alpha Vantage data saved to {alpha_path}")
 
         # Parse the downloaded CSV using the parser
         parsed_df = parse_alpha_vantage_csv(alpha_path)
-        print(f"Parsed DataFrame (head):\n{parsed_df.head()}")
+        logger.info(f"Parsed DataFrame (head):\n{parsed_df.head()}")
         # Store the parsed data in the processed directory, and split into train/test
         processed_dir = os.path.join(
             os.path.dirname(__file__), 'data', 'processed')
@@ -45,7 +52,8 @@ def run_data_pipeline():
             parsed_df = parsed_df.sort_values('date')
         # Split by datetime: 2020-2024 for train, 2025 for eval
         if 'date' in parsed_df.columns:
-            print("Splitting data into train and eval sets based on date...")
+            logger.info(
+                "Splitting data into train and eval sets based on date...")
             parsed_df['date'] = pd.to_datetime(parsed_df['date'])
             train_df = parsed_df[(parsed_df['date'] >= '2020-01-01')
                                  & (parsed_df['date'] < '2025-01-01')]
@@ -53,7 +61,7 @@ def run_data_pipeline():
                                 & (parsed_df['date'] < '2026-01-01')]
         else:
             # fallback: use 80/20 split if no date column
-            print(
+            logger.info(
                 "No date column found. Splitting data into train and eval sets based on index...")
             split_idx = int(0.8 * len(parsed_df))
             train_df = parsed_df.iloc[:split_idx]
@@ -63,19 +71,19 @@ def run_data_pipeline():
         eval_path = os.path.join(processed_dir, 'AAPL_alpha_vantage_eval.csv')
         train_df.to_csv(train_path, index=False)
         eval_df.to_csv(eval_path, index=False)
-        print(f"Train data saved to {train_path}")
-        print(f"Eval data saved to {eval_path}")
+        logger.info(f"Train data saved to {train_path}")
+        logger.info(f"Eval data saved to {eval_path}")
     except Exception as e:
-        print(f"Alpha Vantage download or parsing failed: {e}")
+        logger.error(f"Alpha Vantage download or parsing failed: {e}")
 
 
 def run_training_pipeline(agent_type):
-    print(f"Running training pipeline for {agent_type} agent...")
+    logger.info(f"Running training pipeline for {agent_type} agent...")
     # 1. Load training data
     train_data_path = os.path.join(os.path.dirname(
         __file__), 'data', 'processed', 'AAPL_alpha_vantage_train.csv')
     if not os.path.exists(train_data_path):
-        print(
+        logger.error(
             f"Training data not found at {train_data_path}. Please run the data pipeline first.")
         return
     import pandas as pd
@@ -83,7 +91,13 @@ def run_training_pipeline(agent_type):
 
     # 2. Initialize trading environment
     from src.drl_environment.trading_env import TradingEnv
-    env = TradingEnv(data)
+    # Automatically set action_space_type based on agent_type
+    if agent_type == "dqn":
+        action_space_type = "discrete"
+    else:
+        action_space_type = "multidiscrete"
+    env = TradingEnv(data, action_space_type=action_space_type,
+                     agent_type=agent_type)
 
     # 3. Select and initialize the correct DRL agent
     agent = None
@@ -97,7 +111,7 @@ def run_training_pipeline(agent_type):
         from src.models.agents.dqn_agent import DQNAgent
         agent_class = DQNAgent
     else:
-        print(f"Unknown agent type: {agent_type}")
+        logger.error(f"Unknown agent type: {agent_type}")
         return
 
     # Check for autotune arguments from global scope (argparse args)
@@ -105,8 +119,16 @@ def run_training_pipeline(agent_type):
     auto_tune = getattr(sys.modules['__main__'], 'auto_tune', False)
     n_trials = getattr(sys.modules['__main__'], 'n_trials', 20)
 
+    # 4. Train the agent with TensorBoard logging
+    logger.info("Starting training with TensorBoard logging...")
+    tensorboard_log_dir = os.path.join(
+        os.path.dirname(__file__), 'runs', agent_type)
+    os.makedirs(tensorboard_log_dir, exist_ok=True)
+    # Path for CSV logging
+    csv_log_path = os.path.join(os.path.dirname(__file__), 'training_log.csv')
+
     if auto_tune:
-        print(
+        logger.info(
             f"Auto-tuning enabled for {agent_type} agent with {n_trials} trials...")
         # Try to import the tuning function for the agent
         try:
@@ -120,39 +142,33 @@ def run_training_pipeline(agent_type):
                 from src.training.dqn_tune import tune_dqn
                 tune_func = tune_dqn
             else:
-                print(f"No tuning function found for agent type: {agent_type}")
+                logger.error(
+                    f"No tuning function found for agent type: {agent_type}")
                 return
-            best_params = tune_func(env, n_trials=n_trials)
-            print(f"Best hyperparameters found: {best_params}")
+            best_params = tune_func(
+                env, n_trials=n_trials, tensorboard_log_dir=tensorboard_log_dir)
+            logger.info(f"Best hyperparameters found: {best_params}")
             agent = agent_class(env, **best_params)
         except Exception as e:
-            print(f"Auto-tuning failed: {e}")
-            print("Falling back to default agent initialization.")
+            logger.error(f"Auto-tuning failed: {e}")
+            logger.info("Falling back to default agent initialization.")
             agent = agent_class(env)
     else:
         agent = agent_class(env)
 
-    # 4. Train the agent with TensorBoard logging
-    print("Starting training with TensorBoard logging...")
-    tensorboard_log_dir = os.path.join(
-        os.path.dirname(__file__), 'runs', agent_type)
-    os.makedirs(tensorboard_log_dir, exist_ok=True)
-    # Path for CSV logging
-    csv_log_path = os.path.join(os.path.dirname(__file__), 'training_log.csv')
-    agent.train(tensorboard_log_dir=tensorboard_log_dir,
-                csv_log_path=csv_log_path)
-    print(f"Training log saved to {csv_log_path}")
-    print(f"TensorBoard logs saved to {tensorboard_log_dir}")
+    agent.train(tensorboard_log_dir=tensorboard_log_dir)
+    logger.info(f"Training log saved to {csv_log_path}")
+    logger.info(f"TensorBoard logs saved to {tensorboard_log_dir}")
 
     # 5. Save the trained model
     model_save_path = os.path.join(os.path.dirname(
         __file__), 'models', f'{agent_type}_agent_trained.pth')
     agent.save(model_save_path)
-    print(f"Trained model saved to {model_save_path}")
+    logger.info(f"Trained model saved to {model_save_path}")
 
 
 def run_evaluation_pipeline(model_path):
-    print(f"Running evaluation pipeline for model at {model_path}...")
+    logger.info(f"Running evaluation pipeline for model at {model_path}...")
     import pandas as pd
     import os
     import numpy as np
@@ -160,7 +176,7 @@ def run_evaluation_pipeline(model_path):
     eval_data_path = os.path.join(os.path.dirname(
         __file__), 'data', 'processed', 'AAPL_alpha_vantage_eval.csv')
     if not os.path.exists(eval_data_path):
-        print(
+        logger.error(
             f"Evaluation data not found at {eval_data_path}. Please run the data pipeline first.")
         return
     data = pd.read_csv(eval_data_path)
@@ -178,7 +194,8 @@ def run_evaluation_pipeline(model_path):
     elif 'dqn' in os.path.basename(model_path).lower():
         agent_type = 'dqn'
     else:
-        print("Could not determine agent type from model path. Please use a filename containing 'ppo', 'sac', or 'dqn'.")
+        logger.error(
+            "Could not determine agent type from model path. Please use a filename containing 'ppo', 'sac', or 'dqn'.")
         return
 
     # 4. Load the trained agent
@@ -194,7 +211,7 @@ def run_evaluation_pipeline(model_path):
         agent = DQNAgent.load(model_path, env=env)
 
     if agent is None:
-        print(f"Failed to initialize agent of type {agent_type}.")
+        logger.error(f"Failed to initialize agent of type {agent_type}.")
         return
 
     # 5. Run evaluation (simple loop, can be replaced with backtester)
@@ -235,7 +252,7 @@ def run_evaluation_pipeline(model_path):
         total_reward += reward
         steps += 1
 
-    print(
+    logger.info(
         f"Evaluation finished in {steps} steps. Total reward: {total_reward}")
 
     # Visualization
@@ -244,7 +261,7 @@ def run_evaluation_pipeline(model_path):
         plot_trading_evaluation(prices, actions, portfolio_values,
                                 title="Evaluation: Price, Actions, Portfolio Value")
     except Exception as e:
-        print(f"Plotting failed: {e}")
+        logger.error(f"Plotting failed: {e}")
 
 
 def main():
@@ -262,10 +279,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Make auto_tune and n_trials available globally for run_training_pipeline
-    import sys
-    sys.modules['__main__'].auto_tune = args.auto_tune
-    sys.modules['__main__'].n_trials = args.n_trials
 
     if args.pipeline == "data":
         run_data_pipeline()

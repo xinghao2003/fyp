@@ -13,13 +13,8 @@ def simple_profit_reward(env, prev_asset):
 Implementation of reward functions (e.g., Sharpe ratio-based).
 """
 
-# Placeholder for reward function implementations
-
 
 def calculate_sharpe_ratio(returns, risk_free_rate=0.0):
     """Calculates the Sharpe ratio."""
     # Placeholder implementation
     return 0.0
-
-
-pass
