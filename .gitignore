@@ -1,1 +1,7 @@
 .env
+training_log.csv
+models/
+runs/
+data/
+__pycache__/
+*.pyc
