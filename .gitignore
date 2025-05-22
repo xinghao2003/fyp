@@ -1,7 +1,9 @@
 .env
 training_log.csv
-models/
 runs/
 data/
+checkpoints/
 __pycache__/
 *.pyc
+*.db
+*.sqlite

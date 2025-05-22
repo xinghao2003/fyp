@@ -1,7 +1,3 @@
-"""
-Automated SAC hyperparameter tuning using Optuna.
-Switch between auto and manual mode with a flag.
-"""
 import os
 import logging
 import optuna
@@ -9,7 +5,7 @@ import numpy as np
 import pandas as pd
 from stable_baselines3 import SAC
 from src.drl_environment.trading_env import TradingEnv
-from src.models.agents.sac_agent import SACAgent
+import time
 
 
 def tune_sac(env=None, n_trials=20, tensorboard_log_dir=None):
@@ -44,7 +40,8 @@ def tune_sac(env=None, n_trials=20, tensorboard_log_dir=None):
             verbose=0,
             tensorboard_log=tensorboard_log_dir
         )
-        model.learn(total_timesteps=total_timesteps)
+        model.learn(total_timesteps=total_timesteps,
+                    reset_num_timesteps=True, progress_bar=True)
 
         obs, _ = local_env.reset()
         done = False
@@ -57,30 +54,9 @@ def tune_sac(env=None, n_trials=20, tensorboard_log_dir=None):
             total_reward += reward
         return total_reward
 
-    study = optuna.create_study(direction='maximize')
+    study = optuna.create_study(
+        direction='maximize', study_name=f"tune_sac-{time.strftime('%Y%m%d-%H%M%S')}", storage="sqlite:///tune_sac.db", load_if_exists=True)
     study.optimize(objective_with_env, n_trials=n_trials,
-                   n_jobs=-1, show_progress_bar=True)
+                   n_jobs=1, show_progress_bar=True)
     logging.info(f"Best trial: {study.best_trial.params}")
     return study.best_trial.params
-
-
-def run_agent_training(auto_tune=False, n_trials=20):
-    """
-    For backward compatibility: runs manual or auto-tune SAC agent training.
-    """
-    if auto_tune:
-        best_params = tune_sac(n_trials=n_trials)
-        logging.info(f"Best hyperparameters: {best_params}")
-        return best_params
-    else:
-        train_data_path = os.path.join(os.path.dirname(
-            __file__), '../../data/processed/AAPL_alpha_vantage_train.csv')
-        df = pd.read_csv(train_data_path)
-        env = TradingEnv(df)
-        agent = SACAgent(env)
-        agent.train(total_timesteps=10000)
-        agent.save('sac_agent_manual.pth')
-        logging.info("Manual training complete.")
-        agent.train(total_timesteps=10000)
-        agent.save('sac_agent_manual.pth')
-        logging.info("Manual training complete.")

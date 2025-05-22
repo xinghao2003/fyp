@@ -28,26 +28,11 @@ SAC_PARAMS = {
     "gradient_steps": 1,
 }
 
-# Example DQN parameters
-DQN_PARAMS = {
-    "learning_rate": 0.0001,
-    "buffer_size": 1000000,
-    "learning_starts": 50000,
-    "batch_size": 32,
-    "tau": 1.0,
-    "gamma": 0.99,
-    "train_freq": 4,
-    "gradient_steps": 1,
-    # "exploration_fraction": 0.1,
-    # "exploration_final_eps": 0.05,
-}
 
 # General training parameters
 TRAINING_PARAMS = {
     "total_timesteps_ppo": 1e6,
     "total_timesteps_sac": 1e6,
-    "total_timesteps_dqn": 1e6,
 }
 
 pass
-

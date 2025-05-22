@@ -24,11 +24,7 @@ class TradingEnv(Env):
                  **kwargs):
         # Allow agent_type to override action_space_type if passed in kwargs
         agent_type = kwargs.pop('agent_type', None)
-        if agent_type is not None:
-            if agent_type.lower() == 'dqn':
-                action_space_type = 'discrete'
-            else:
-                action_space_type = 'multidiscrete'
+        # Only PPO and SAC supported; always use multidiscrete
         super().__init__()
         self.df = df.reset_index(drop=True)
         self.initial_cash = initial_cash
@@ -97,15 +93,28 @@ class TradingEnv(Env):
         return float(cast(float, price_scalar))
 
     def step(
-        self, action: Union[int, Sequence[int]]
+        self, action: Union[int, np.ndarray, Sequence[int]]
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        # Accepts action as [action_type, units]
+        # Accepts action as [action_type, units] or as a discrete value
         if self.action_space_type == 'multidiscrete':
-            # Accept np.ndarray / list / tuple
-            if not isinstance(action, Sequence):
-                # Legacy single-value action → treat as “hold one unit”
-                action = [int(action), 1]
-            action_type, units = int(action[0]), int(action[1])
+            # Handle different types of actions
+            if isinstance(action, (np.ndarray, list, tuple)):
+                # Convert numpy arrays to list and ensure we have at least 2 values
+                action_list = np.array(action).flatten().tolist()
+                if len(action_list) >= 2:
+                    action_type, units = int(
+                        action_list[0]), int(action_list[1])
+                else:
+                    # Only one value provided, assume it's action_type with units=1
+                    action_type, units = int(action_list[0]), 1
+            elif isinstance(action, (int, np.integer, float)):
+                # Single scalar value, treat as action_type with units=1
+                action_type, units = int(action), 1
+            else:
+                # Fallback for other types - log and use a default
+                print(
+                    f"Warning: Unexpected action type: {type(action)}, action: {action}")
+                action_type, units = 0, 1  # Default to hold
         else:  # discrete action space
             # Make absolutely sure the object really is an int for the checker
             if not isinstance(action, (int, np.integer)):
@@ -113,8 +122,21 @@ class TradingEnv(Env):
                     f"Discrete action space expects an int, got {type(action)}"
                 )
             action_int: int = int(action)
-            action_type = 1 + (action_int - 1) // self.max_stock_per_trade
-            units = (action_int - 1) % self.max_stock_per_trade + 1
+
+            # Handle different discrete action interpretations:
+            # 0 = hold with 0 units
+            # 1 to max_stock_per_trade = buy with 1 to max_stock_per_trade units
+            # max_stock_per_trade+1 to 2*max_stock_per_trade = sell with 1 to max_stock_per_trade units
+            if action_int == 0:
+                action_type, units = 0, 0  # Hold
+            elif 1 <= action_int <= self.max_stock_per_trade:
+                action_type, units = 1, action_int  # Buy 1 to max_stock_per_trade
+            else:
+                # Sell actions
+                action_type = 2
+                units = action_int - self.max_stock_per_trade
+                if units > self.max_stock_per_trade:
+                    units = self.max_stock_per_trade
 
         # Validate action format for each action space type
         if self.action_space_type == 'multidiscrete':

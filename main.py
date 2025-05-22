@@ -91,11 +91,8 @@ def run_training_pipeline(agent_type):
 
     # 2. Initialize trading environment
     from src.drl_environment.trading_env import TradingEnv
-    # Automatically set action_space_type based on agent_type
-    if agent_type == "dqn":
-        action_space_type = "discrete"
-    else:
-        action_space_type = "multidiscrete"
+    # Always use multidiscrete action space as we only support PPO and SAC
+    action_space_type = "multidiscrete"
     env = TradingEnv(data, action_space_type=action_space_type,
                      agent_type=agent_type)
 
@@ -107,9 +104,6 @@ def run_training_pipeline(agent_type):
     elif agent_type == "sac":
         from src.models.agents.sac_agent import SACAgent
         agent_class = SACAgent
-    elif agent_type == "dqn":
-        from src.models.agents.dqn_agent import DQNAgent
-        agent_class = DQNAgent
     else:
         logger.error(f"Unknown agent type: {agent_type}")
         return
@@ -127,6 +121,7 @@ def run_training_pipeline(agent_type):
     # Path for CSV logging
     csv_log_path = os.path.join(os.path.dirname(__file__), 'training_log.csv')
 
+    total_timesteps = 10000
     if auto_tune:
         logger.info(
             f"Auto-tuning enabled for {agent_type} agent with {n_trials} trials...")
@@ -138,9 +133,6 @@ def run_training_pipeline(agent_type):
             elif agent_type == "sac":
                 from src.training.sac_tune import tune_sac
                 tune_func = tune_sac
-            elif agent_type == "dqn":
-                from src.training.dqn_tune import tune_dqn
-                tune_func = tune_dqn
             else:
                 logger.error(
                     f"No tuning function found for agent type: {agent_type}")
@@ -148,21 +140,24 @@ def run_training_pipeline(agent_type):
             best_params = tune_func(
                 env, n_trials=n_trials, tensorboard_log_dir=tensorboard_log_dir)
             logger.info(f"Best hyperparameters found: {best_params}")
+            total_timesteps = best_params.pop('total_timesteps', 10000)
             agent = agent_class(env, **best_params)
         except Exception as e:
             logger.error(f"Auto-tuning failed: {e}")
             logger.info("Falling back to default agent initialization.")
             agent = agent_class(env)
     else:
+        logger.info(
+            f"Training {agent_type} agent with default hyperparameters...")
         agent = agent_class(env)
 
-    agent.train(tensorboard_log_dir=tensorboard_log_dir)
-    logger.info(f"Training log saved to {csv_log_path}")
+    agent.train(total_timesteps=total_timesteps,
+                tensorboard_log_dir=tensorboard_log_dir)
     logger.info(f"TensorBoard logs saved to {tensorboard_log_dir}")
 
     # 5. Save the trained model
     model_save_path = os.path.join(os.path.dirname(
-        __file__), 'models', f'{agent_type}_agent_trained.pth')
+        __file__), 'checkpoints', f'{agent_type}_agent_trained.pth')
     agent.save(model_save_path)
     logger.info(f"Trained model saved to {model_save_path}")
 
@@ -191,14 +186,19 @@ def run_evaluation_pipeline(model_path):
         agent_type = 'ppo'
     elif 'sac' in os.path.basename(model_path).lower():
         agent_type = 'sac'
-    elif 'dqn' in os.path.basename(model_path).lower():
-        agent_type = 'dqn'
     else:
         logger.error(
-            "Could not determine agent type from model path. Please use a filename containing 'ppo', 'sac', or 'dqn'.")
+            "Could not determine agent type from model path. Please use a filename containing 'ppo' or 'sac'.")
         return
 
-    # 4. Load the trained agent
+    # 4. Initialize trading environment
+    from src.drl_environment.trading_env import TradingEnv
+    # Always use multidiscrete action space as we only support PPO and SAC
+    action_space_type = "multidiscrete"
+    env = TradingEnv(data, action_space_type=action_space_type,
+                     agent_type=agent_type)
+
+    # 5. Load the trained agent
     agent = None
     if agent_type == 'ppo':
         from src.models.agents.ppo_agent import PPOAgent
@@ -206,15 +206,12 @@ def run_evaluation_pipeline(model_path):
     elif agent_type == 'sac':
         from src.models.agents.sac_agent import SACAgent
         agent = SACAgent.load(model_path, env=env)
-    elif agent_type == 'dqn':
-        from src.models.agents.dqn_agent import DQNAgent
-        agent = DQNAgent.load(model_path, env=env)
 
     if agent is None:
         logger.error(f"Failed to initialize agent of type {agent_type}.")
         return
 
-    # 5. Run evaluation (simple loop, can be replaced with backtester)
+    # 6. Run evaluation (simple loop, can be replaced with backtester)
     # Handle both old and new gym API formats for reset()
     reset_result = env.reset()
     if isinstance(reset_result, tuple):
@@ -233,16 +230,45 @@ def run_evaluation_pipeline(model_path):
 
     while not done:
         action = agent.predict(obs)
-        # Convert numpy array to int if needed
-        if isinstance(action, np.ndarray):
-            action = int(action.item()) if action.size == 1 else int(
-                np.argmax(action))
+        # Robustly convert action to int if needed
+        import numpy as np
+        if isinstance(action, (np.generic, np.ndarray)):
+            # If it's a numpy scalar
+            if np.isscalar(action):
+                action = int(action)  # type: ignore
+            # If it's a numpy array
+            elif isinstance(action, np.ndarray):
+                if action.size == 1:
+                    action = int(action.item())
+                elif len(action) > 0:  # Ensure the array has at least one element
+                    if agent_type == 'dqn':
+                        # For DQN, just use the integer action directly
+                        if np.issubdtype(action.dtype, np.integer):
+                            action = int(
+                                action.item() if action.size == 1 else action[0])
+                        else:
+                            action = 0  # Fallback for non-integer arrays
+                    else:
+                        # Take first element for other agent types
+                        action = int(action[0])
+                else:
+                    action = 0  # Fallback for empty array
+        elif isinstance(action, (list, tuple)) and len(action) >= 1:
+            if agent_type == 'dqn':
+                # For DQN, if we somehow got a list with one element
+                action = int(action[0]) if len(action) == 1 else int(action)
+            else:
+                action = int(action[0])
+        else:
+            # Absolute fallback: default action
+            action = 0
+
         # Unpack the step result properly (handling potential 5-tuple return)
         step_result = env.step(action)
         if len(step_result) == 5:
             obs, reward, done, _, info = step_result
         else:
-            obs, reward, done, info = step_result
+            obs, reward, done, info = step_result  # type: ignore
 
         # Record for plotting
         prices.append(env._get_price())
@@ -269,7 +295,7 @@ def main():
     parser.add_argument("--pipeline", type=str, choices=["data", "train", "evaluate"], required=True,
                         help="Pipeline to run: data, train, or evaluate")
     parser.add_argument("--agent_type", type=str,
-                        choices=["ppo", "sac", "dqn"], help="Type of DRL agent for training")
+                        choices=["ppo", "sac"], help="Type of DRL agent for training")
     parser.add_argument("--model_path", type=str,
                         help="Path to the trained model for evaluation")
     parser.add_argument("--auto_tune", action="store_true",
@@ -279,6 +305,10 @@ def main():
 
     args = parser.parse_args()
 
+    # Set global variables for auto_tune and n_trials
+    global auto_tune, n_trials
+    auto_tune = args.auto_tune
+    n_trials = args.n_trials
 
     if args.pipeline == "data":
         run_data_pipeline()

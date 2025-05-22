@@ -13,7 +13,7 @@ This script will orchestrate the training process, including:
 # def main():
 #     # Load configurations (model params, training settings)
 #     # Initialize DRL environment
-#     # Initialize DRL agent (PPO, SAC, DQN)
+#     # Initialize DRL agent (PPO, SAC)
 #     # Initialize callbacks (e.g., for model saving, early stopping)
 #     # Train the agent
 #     # Save the trained model
@@ -24,4 +24,3 @@ This script will orchestrate the training process, including:
 #     main()
 
 pass
-

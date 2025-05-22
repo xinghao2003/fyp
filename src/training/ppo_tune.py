@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from stable_baselines3 import PPO
 from src.drl_environment.trading_env import TradingEnv
-from src.models.agents.ppo_agent import PPOAgent
+import time
 
 
 def tune_ppo(env=None, n_trials=20, tensorboard_log_dir=None):
@@ -43,7 +43,8 @@ def tune_ppo(env=None, n_trials=20, tensorboard_log_dir=None):
             verbose=0,
             tensorboard_log=tensorboard_log_dir
         )
-        model.learn(total_timesteps=total_timesteps)
+        model.learn(total_timesteps=total_timesteps,
+                    reset_num_timesteps=True, progress_bar=True)
 
         # Evaluate (simple: final total asset)
         obs, _ = local_env.reset()
@@ -57,30 +58,9 @@ def tune_ppo(env=None, n_trials=20, tensorboard_log_dir=None):
             total_reward += reward
         return total_reward
 
-    study = optuna.create_study(direction='maximize')
+    study = optuna.create_study(
+        direction='maximize', study_name=f"tune_ppo-{time.strftime('%Y%m%d-%H%M%S')}", storage="sqlite:///tune_ppo.db", load_if_exists=True)
     study.optimize(objective_with_env, n_trials=n_trials,
-                   n_jobs=-1, show_progress_bar=True)
+                   n_jobs=1, show_progress_bar=True)
     logging.info(f"Best trial: {study.best_trial.params}")
     return study.best_trial.params
-
-
-def run_agent_training(auto_tune=False, n_trials=20):
-    """
-    For backward compatibility: runs manual or auto-tune PPO agent training.
-    """
-    if auto_tune:
-        best_params = tune_ppo(n_trials=n_trials)
-        logging.info(f"Best hyperparameters: {best_params}")
-        return best_params
-    else:
-        train_data_path = os.path.join(os.path.dirname(
-            __file__), '../../data/processed/AAPL_alpha_vantage_train.csv')
-        df = pd.read_csv(train_data_path)
-        env = TradingEnv(df)
-        agent = PPOAgent(env)
-        agent.train(total_timesteps=10000)
-        agent.save('ppo_agent_manual.pth')
-        logging.info("Manual training complete.")
-        agent.train(total_timesteps=10000)
-        agent.save('ppo_agent_manual.pth')
-        logging.info("Manual training complete.")

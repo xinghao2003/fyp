@@ -22,7 +22,7 @@ RAW_DATA_DIR = "data/raw/"
 PROCESSED_DATA_DIR = "data/processed/"
 
 # Model paths
-MODEL_SAVE_DIR = "models/trained_agents/"
+MODEL_SAVE_DIR = "checkpoints/"
 LOG_DIR = "logs/"
 
 pass

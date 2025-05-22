@@ -10,7 +10,7 @@ This repository contains the codebase scaffold for implementing this DRL trading
 
 The project is organized as follows:
 
-```
+```text
 project_root/
 ├── data/                     # Stores raw and processed financial data
 │   ├── raw/
@@ -39,49 +39,58 @@ Refer to `scaffold_design.md` for a more detailed breakdown of the structure and
 
 ## Setup Instructions
 
-1.  **Clone the repository:**
+1. **Clone the repository:**
+
     ```bash
     git clone <repository_url>
     cd project_root
     ```
 
-2.  **Create and activate a virtual environment (recommended):**
+2. **Create and activate a virtual environment (recommended):**
+
     ```bash
     python3 -m venv venv
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`
     ```
 
-3.  **Install dependencies:**
+3. **Install dependencies:**
+
     ```bash
     pip install -r requirements.txt
     ```
+
     *Note: Some libraries like TA-Lib might require additional system dependencies to be installed first. Please refer to their respective documentation.* OpenAI Gym/Gymnasium might also be needed depending on the DRL environment implementation.
 
-4.  **Set up API Keys (if applicable):**
+4. **Set up API Keys (if applicable):**
     Create a `.env` file in the `project_root` directory and add your API keys for services like Alpha Vantage:
+
     ```env
     ALPHA_VANTAGE_API_KEY=\"YOUR_ACTUAL_API_KEY\"
     # Add other keys as needed
     ```
+
     The `src/config/settings.py` file is set up to load these environment variables.
 
 ## Usage
 
 The `main.py` script serves as the entry point for running different project pipelines.
 
-*   **Data Processing Pipeline:**
+* **Data Processing Pipeline:**
+
     ```bash
     python main.py --pipeline data
     ```
 
-*   **Training Pipeline:**
-    Specify the agent type (e.g., ppo, sac, dqn).
+* **Training Pipeline:**
+    Specify the agent type (e.g., ppo, sac).
+
     ```bash
     python main.py --pipeline train --agent_type ppo
     ```
 
-*   **Evaluation Pipeline:**
+* **Evaluation Pipeline:**
     Specify the path to the trained model.
+
     ```bash
     python main.py --pipeline evaluate --model_path models/trained_agents/ppo_model.zip
     ```
@@ -95,4 +104,3 @@ Refer to the specific modules and scripts for more detailed usage instructions a
 ## License
 
 (Specify the project license, e.g., MIT, Apache 2.0.)
-

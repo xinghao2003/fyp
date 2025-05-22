@@ -40,8 +40,7 @@ project_root/
 │   │   ├── agents/
 │   │   │   ├── __init__.py
 │   │   │   ├── ppo_agent.py    # Implementation of PPO agent
-│   │   │   ├── sac_agent.py    # Implementation of SAC agent
-│   │   │   └── dqn_agent.py    # Implementation of DQN agent
+│   │   │   └── sac_agent.py    # Implementation of SAC agent
 │   │   ├── meta_learning/
 │   │   │   ├── __init__.py
 │   │   │   └── meta_learner.py # Components for meta-learning strategies
@@ -90,7 +89,7 @@ project_root/
     *   **`preprocessing/`**: Focuses on cleaning and normalizing the raw data.
     *   **`feature_engineering/`**: Creates market-agnostic features crucial for generalization.
     *   **`drl_environment/`**: Defines the custom trading environment. This is a core component and will likely interact heavily with libraries like FinRL or OpenAI Gym. It will define state spaces, action spaces, and the reward mechanism (e.g., based on Sharpe ratio).
-    *   **`models/`**: Contains implementations of DRL agents (PPO, SAC, DQN), and structures for meta-learning and transfer learning.
+    *   **`models/`**: Contains implementations of DRL agents (PPO, SAC), and structures for meta-learning and transfer learning.
     *   **`training/`**: Scripts and utilities for training the DRL agents.
     *   **`evaluation/`**: Tools for backtesting strategies and calculating performance metrics.
     *   **`config/`**: Stores configuration files, parameters, and settings.
