@@ -4,12 +4,17 @@ This script will serve as the primary entry point to orchestrate different proje
 """
 
 import argparse
+import random
+import numpy as np
+import torch
 import os
 import logging
 from src.config import settings
+from src.config.settings import NORMALIZATION_CONFIG, TRADING_ENV_CONFIG, TRAINING_CONFIG
 import pandas as pd
 
 from src.data_ingestion.collectors import AlphaVantageCollector
+from src.data_ingestion.parsers import prepare_for_gym_anytrading
 from src.data_ingestion.parsers import parse_alpha_vantage_csv
 
 # Setup standardized logging
@@ -89,12 +94,21 @@ def run_training_pipeline(agent_type):
     import pandas as pd
     data = pd.read_csv(train_data_path)
 
-    # 2. Initialize trading environment
+    # Prepare data for gym_anytrading
+    data = prepare_for_gym_anytrading(data)
+
+    # 2. Initialize trading environment with normalization enabled
     from src.drl_environment.trading_env import TradingEnv
-    # Always use multidiscrete action space as we only support PPO and SAC
-    action_space_type = "multidiscrete"
-    env = TradingEnv(data, action_space_type=action_space_type,
-                     agent_type=agent_type)
+    # Use configuration settings
+    env = TradingEnv(data,
+                     action_space_type=TRADING_ENV_CONFIG['action_space_type'],
+                     initial_cash=TRADING_ENV_CONFIG['initial_cash'],
+                     transaction_cost_pct=TRADING_ENV_CONFIG['transaction_cost_pct'],
+                     window_size=TRADING_ENV_CONFIG['window_size'],
+                     normalize_data=NORMALIZATION_CONFIG['enable_normalization'],
+                     normalization_method=NORMALIZATION_CONFIG['normalization_method'],
+                     add_market_agnostic_features=NORMALIZATION_CONFIG['add_market_agnostic_features'],
+                     seed=TRAINING_CONFIG['default_seed'])
 
     # 3. Select and initialize the correct DRL agent
     agent = None
@@ -176,9 +190,19 @@ def run_evaluation_pipeline(model_path):
         return
     data = pd.read_csv(eval_data_path)
 
-    # 2. Initialize trading environment
+    # Prepare data for gym_anytrading
+    data = prepare_for_gym_anytrading(data)
+
+    # 2. Initialize trading environment with normalization enabled
     from src.drl_environment.trading_env import TradingEnv
-    env = TradingEnv(data)
+    env = TradingEnv(data,
+                     action_space_type=TRADING_ENV_CONFIG['action_space_type'],
+                     initial_cash=TRADING_ENV_CONFIG['initial_cash'],
+                     transaction_cost_pct=TRADING_ENV_CONFIG['transaction_cost_pct'],
+                     window_size=TRADING_ENV_CONFIG['window_size'],
+                     normalize_data=NORMALIZATION_CONFIG['enable_normalization'],
+                     normalization_method=NORMALIZATION_CONFIG['normalization_method'],
+                     add_market_agnostic_features=NORMALIZATION_CONFIG['add_market_agnostic_features'])
 
     # 3. Detect agent type from model_path (simple heuristic)
     agent_type = None
@@ -290,6 +314,18 @@ def run_evaluation_pipeline(model_path):
         logger.error(f"Plotting failed: {e}")
 
 
+def set_global_seed(seed=42):
+    """Set random seed for reproducibility across numpy, random, torch."""
+    random.seed(seed)
+    np.random.seed(seed)
+    try:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="DRL Trading Model Framework")
     parser.add_argument("--pipeline", type=str, choices=["data", "train", "evaluate"], required=True,
@@ -309,6 +345,9 @@ def main():
     global auto_tune, n_trials
     auto_tune = args.auto_tune
     n_trials = args.n_trials
+
+    # Set global seed for reproducibility
+    set_global_seed(42)
 
     if args.pipeline == "data":
         run_data_pipeline()

@@ -25,4 +25,28 @@ PROCESSED_DATA_DIR = "data/processed/"
 MODEL_SAVE_DIR = "checkpoints/"
 LOG_DIR = "logs/"
 
+# Data Preprocessing Settings
+NORMALIZATION_CONFIG = {
+    'enable_normalization': True,
+    # 'percentage_change', 'minmax', 'standard', 'robust'
+    'normalization_method': 'percentage_change',
+    'add_market_agnostic_features': True,
+    'feature_range': (0, 1),  # For MinMaxScaler
+}
+
+# Trading Environment Settings
+TRADING_ENV_CONFIG = {
+    'initial_cash': 1000.0,
+    'transaction_cost_pct': 0.001,
+    'window_size': 10,
+    'action_space_type': 'multidiscrete',
+}
+
+# Training Settings
+TRAINING_CONFIG = {
+    'default_seed': 42,
+    'enable_tensorboard': True,
+    'save_freq': 10000,
+}
+
 pass

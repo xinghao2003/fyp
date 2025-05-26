@@ -5,10 +5,11 @@ import numpy as np
 import pandas as pd
 from stable_baselines3 import SAC
 from src.drl_environment.trading_env import TradingEnv
+from src.data_ingestion.parsers import prepare_for_gym_anytrading
 import time
 
 
-def tune_sac(env=None, n_trials=20, tensorboard_log_dir=None):
+def tune_sac(env=None, n_trials=20, tensorboard_log_dir=None, seed=42):
     """
     Run Optuna hyperparameter tuning for SACAgent. If env is None, loads default training env.
     Returns best hyperparameters as a dict.
@@ -18,8 +19,27 @@ def tune_sac(env=None, n_trials=20, tensorboard_log_dir=None):
         if local_env is None:
             train_data_path = os.path.join(os.path.dirname(
                 __file__), '../../data/processed/AAPL_alpha_vantage_train.csv')
+            # Prepare data for gym_anytrading
             df = pd.read_csv(train_data_path)
-            local_env = TradingEnv(df)
+            df = prepare_for_gym_anytrading(df)
+            local_env = TradingEnv(df,
+                                   window_size=10,
+                                   seed=seed,
+                                   normalize_data=True,
+                                   normalization_method='percentage_change',
+                                   add_market_agnostic_features=True)
+        # Set seeds for reproducibility
+        import random
+        import numpy as np
+        try:
+            import torch
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+        except Exception:
+            pass
+        random.seed(seed)
+        np.random.seed(seed)
 
         learning_rate = trial.suggest_float(
             'learning_rate', 1e-5, 1e-2, log=True)
