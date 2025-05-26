@@ -182,7 +182,7 @@ if __name__ == "__main__":
         # Optimize hyperparameters
         logger.info("Starting hyperparameter optimization...")
         # 20 trials or 1 hour timeout
-        study.optimize(objective, n_trials=20, show_progress_bar=True)
+        study.optimize(objective, n_trials=2, show_progress_bar=True)
 
         logger.info("Hyperparameter optimization completed!")
         logger.info(f"Best trial value: {study.best_value}")
@@ -213,8 +213,6 @@ if __name__ == "__main__":
                     reset_num_timesteps=True, progress_bar=True)
 
         # Save the trained model
-        model.save("models/ppo_optimized_stock_trading")
-        logger.info("Optimized model saved successfully!")
         logger.info("Section B Step 5 completed successfully!")
 
     except Exception as e:
