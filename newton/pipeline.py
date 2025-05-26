@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import matplotlib.pyplot as plt
 import numpy as np
 import optuna
+from torch import mul
 from data_retreival import AlphaVantageDownloader, YahooFinanceDownloader
 from data_processing import AlphaVantageDataProcessor, YahooFinanceDataProcessor
 from environment import StocksEnv
@@ -78,9 +79,9 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error in pipeline step 3: {str(e)}", exc_info=True)
 
-    # Section A: Basic Pipeline
-    # Step 4: Implement an RL agent using Stable Baselines3
-    # Implement PPO agent
+    # # Section A: Basic Pipeline
+    # # Step 4: Implement an RL agent using Stable Baselines3
+    # # Implement PPO agent
     # try:
     #     logger.info("Starting pipeline step 4: Implement RL agent")
 
@@ -90,7 +91,7 @@ if __name__ == "__main__":
     # except Exception as e:
     #     logger.error(f"Error in pipeline step 4: {str(e)}", exc_info=True)
 
-    # Step 5: Train the RL agent
+    # # Step 5: Train the RL agent
     # try:
     #     # Based on a rough estimate, the agent should achieve a optimal policy within 450,000 timesteps
     #     logger.info("Starting pipeline step 5: Train the RL agent")
@@ -103,6 +104,7 @@ if __name__ == "__main__":
     # Section B: Optuna Tuning
     # Step 4: Implement an RL agent using Stable Baselines3
     # Implement PPO agent with hyperparameter tuning
+    multi_processing = True
     try:
         logger.info(
             "Starting Section B Step 4: Implement RL agent with hyperparameter tuning")
@@ -114,8 +116,11 @@ if __name__ == "__main__":
                 'learning_rate', 1e-5, 1e-2, log=True)
             n_steps = trial.suggest_categorical(
                 'n_steps', [128, 256, 512, 1024, 2048])
+            # Ensure batch_size is a factor of n_steps
+            possible_batch_sizes = [bs for bs in [
+                32, 64, 128, 256] if n_steps % bs == 0]
             batch_size = trial.suggest_categorical(
-                'batch_size', [32, 64, 128, 256])
+                'batch_size', possible_batch_sizes)
             n_epochs = trial.suggest_int('n_epochs', 3, 30)
             gamma = trial.suggest_float('gamma', 0.9, 0.9999)
             gae_lambda = trial.suggest_float('gae_lambda', 0.8, 1.0)
@@ -141,7 +146,7 @@ if __name__ == "__main__":
 
             # Train the model for a short period for evaluation
             model.learn(total_timesteps=50000,
-                        reset_num_timesteps=True, progress_bar=True)
+                        reset_num_timesteps=True, progress_bar=(not multi_processing))
 
             # Evaluate on validation environment
             val_start = window_size
@@ -181,8 +186,9 @@ if __name__ == "__main__":
 
         # Optimize hyperparameters
         logger.info("Starting hyperparameter optimization...")
-        # 20 trials or 1 hour timeout
-        study.optimize(objective, n_trials=2, show_progress_bar=True)
+        # Use n_trials to control the number of hyperparameter combinations to try
+        study.optimize(objective, n_trials=100,
+                       show_progress_bar=True, n_jobs=(16 if multi_processing else 1))
 
         logger.info("Hyperparameter optimization completed!")
         logger.info(f"Best trial value: {study.best_value}")
