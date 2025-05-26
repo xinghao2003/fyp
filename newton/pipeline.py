@@ -104,7 +104,8 @@ if __name__ == "__main__":
     # Section B: Optuna Tuning
     # Step 4: Implement an RL agent using Stable Baselines3
     # Implement PPO agent with hyperparameter tuning
-    multi_processing = True
+    multi_processing = False
+    progress_bar = False
     try:
         logger.info(
             "Starting Section B Step 4: Implement RL agent with hyperparameter tuning")
@@ -116,11 +117,18 @@ if __name__ == "__main__":
                 'learning_rate', 1e-5, 1e-2, log=True)
             n_steps = trial.suggest_categorical(
                 'n_steps', [128, 256, 512, 1024, 2048])
-            # Ensure batch_size is a factor of n_steps
-            possible_batch_sizes = [bs for bs in [
-                32, 64, 128, 256] if n_steps % bs == 0]
+            # Use a fixed set of batch sizes and validate compatibility later
             batch_size = trial.suggest_categorical(
-                'batch_size', possible_batch_sizes)
+                'batch_size', [32, 64, 128, 256])
+            
+            # Ensure batch_size is compatible with n_steps
+            if batch_size > n_steps or n_steps % batch_size != 0:
+                # If incompatible, use the largest valid batch size
+                valid_batch_sizes = [bs for bs in [32, 64, 128, 256] if bs <= n_steps and n_steps % bs == 0]
+                if valid_batch_sizes:
+                    batch_size = max(valid_batch_sizes)
+                else:
+                    batch_size = 32  # fallback
             n_epochs = trial.suggest_int('n_epochs', 3, 30)
             gamma = trial.suggest_float('gamma', 0.9, 0.9999)
             gae_lambda = trial.suggest_float('gae_lambda', 0.8, 1.0)
@@ -146,7 +154,7 @@ if __name__ == "__main__":
 
             # Train the model for a short period for evaluation
             model.learn(total_timesteps=50000,
-                        reset_num_timesteps=True, progress_bar=(not multi_processing))
+                        reset_num_timesteps=True, progress_bar=(progress_bar if not multi_processing else False))
 
             # Evaluate on validation environment
             val_start = window_size
