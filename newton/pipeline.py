@@ -106,6 +106,7 @@ if __name__ == "__main__":
     # Implement PPO agent with hyperparameter tuning
     multi_processing = False
     progress_bar = False
+    cores = 8
     try:
         logger.info(
             "Starting Section B Step 4: Implement RL agent with hyperparameter tuning")
@@ -120,11 +121,12 @@ if __name__ == "__main__":
             # Use a fixed set of batch sizes and validate compatibility later
             batch_size = trial.suggest_categorical(
                 'batch_size', [32, 64, 128, 256])
-            
+
             # Ensure batch_size is compatible with n_steps
             if batch_size > n_steps or n_steps % batch_size != 0:
                 # If incompatible, use the largest valid batch size
-                valid_batch_sizes = [bs for bs in [32, 64, 128, 256] if bs <= n_steps and n_steps % bs == 0]
+                valid_batch_sizes = [bs for bs in [
+                    32, 64, 128, 256] if bs <= n_steps and n_steps % bs == 0]
                 if valid_batch_sizes:
                     batch_size = max(valid_batch_sizes)
                 else:
@@ -196,7 +198,7 @@ if __name__ == "__main__":
         logger.info("Starting hyperparameter optimization...")
         # Use n_trials to control the number of hyperparameter combinations to try
         study.optimize(objective, n_trials=100,
-                       show_progress_bar=True, n_jobs=(16 if multi_processing else 1))
+                       show_progress_bar=True, n_jobs=(cores if multi_processing else 1))
 
         logger.info("Hyperparameter optimization completed!")
         logger.info(f"Best trial value: {study.best_value}")
