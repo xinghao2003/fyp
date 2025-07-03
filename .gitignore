@@ -5,3 +5,4 @@ runs/
 *.pyc
 *.db
 *.sqlite
+*ssh_id*
