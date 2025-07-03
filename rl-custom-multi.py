@@ -1,11 +1,8 @@
 import gym_trading_env
 import gymnasium as gym
-from gym_trading_env.downloader import download
-import datetime
 import pandas as pd
 from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnNoModelImprovement
 import numpy as np
 import random
 import os
@@ -68,6 +65,19 @@ train_env = gym.make('MultiDatasetTradingEnv',
 # Set seed for training environment
 train_env.reset(seed=SEED)
 
+# Create evaluation environment
+eval_env = gym.make('MultiDatasetTradingEnv',
+                    dataset_dir='dataset/1d-2005/val/*.pkl',  # Use validation dataset
+                    reward_function=custom_reward_function,
+                    preprocess=preprocess,
+                    windows=20,
+                    positions=[-1, 0, 1],
+                    trading_fees=0.001,
+                    borrow_interest_rate=0.0003,
+                    )
+
+eval_env.reset(seed=SEED)
+
 # Create PPO model with seed
 # Swap to "RecurrentPPO" to enable recurrent policies like LSTM
 # Use "MlpLstmPolicy" for LSTM support, which is useful for trading tasks, where temporal dependencies are important
@@ -75,10 +85,26 @@ model = RecurrentPPO("MlpLstmPolicy",
                      train_env,
                      verbose=1,
                      tensorboard_log="./runs",
-                     seed=SEED)
+                     seed=SEED
+                     )
+
+# Set up early stopping callback
+stop_callback = StopTrainingOnNoModelImprovement(
+    max_no_improvement_evals=10, min_evals=5, verbose=1)
+
+eval_callback = EvalCallback(eval_env,
+                             best_model_save_path='./model/best/',
+                             log_path='./eval_logs/',
+                             eval_freq=10000,  # Evaluate every 10k steps
+                             n_eval_episodes=5,
+                             deterministic=True,
+                             render=False,
+                             callback_after_eval=stop_callback,
+                             verbose=1)
 
 # Train the model
-print("Starting PPO training...")
-model.learn(total_timesteps=3000000, tb_log_name="recurrent_ppo",)
+print("Starting PPO training with early stopping...")
+model.learn(total_timesteps=5000000,
+            tb_log_name="recurrent_ppo", callback=eval_callback)
 
-model.save("ppo_trading_model")
+model.save("./model/recurrent_ppo_trading_model")
