@@ -1,46 +1,6 @@
-# List of Python dependencies
-
-# Core Libraries
-pandas>=2.0.0
-numpy
-scikit-learn
-matplotlib
-seaborn
-
-# Deep Reinforcement Learning (DRL) Libraries
-stable-baselines3
-# FinRL # Uncomment if directly using FinRL's full package, or list specific components if used modularly
-torch # or tensorflow, depending on SB3/FinRL choice and custom model needs
-
-# Data Acquisition Libraries
-yfinance
-alpha_vantage
-
-# Meta-learning and Transfer Learning (Potentially)
-# learn2learn # Uncomment if used
-# higher # Uncomment if used
-
-# Visualization Libraries
-# matplotlib # Already included in core libraries
-# seaborn # Already included in core libraries
-
-# Utility Libraries
-TA-Lib # May require manual installation of underlying C library first
-python-dotenv>=1.0.0
-
-# For DRL environment (if not using FinRL's directly)
-# gymnasium # OpenAI Gym's successor, or gym if using older FinRL versions
-gymnasium
-gym_anytrading
-
-# Optuna for hyperparameter tuning
-optuna
-
-# For logging and tracking experiments
-tensorboard
-
+gym-trading-env
 stable-baselines3[extra]
-optuna-dashboard
-
-requests>=2.31.0
-pyarrow>=12.0.0
+tensorboard
+matplotlib
+pandas
+numpy
