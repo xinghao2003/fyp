@@ -55,7 +55,7 @@ def preprocess(df: pd.DataFrame):
 
 # Create training environment
 train_env = gym.make('MultiDatasetTradingEnv',
-                     dataset_dir='dataset/1d-2005/*.pkl',
+                     dataset_dir='dataset/1d-2005/train/*.pkl',
                      reward_function=custom_reward_function,
                      preprocess=preprocess,
                      windows=20,  # Set window size for LSTM
@@ -74,11 +74,11 @@ train_env.reset(seed=SEED)
 model = RecurrentPPO("MlpLstmPolicy",
                      train_env,
                      verbose=1,
-                     tensorboard_log="./ppo_trading_tensorboard/",
+                     tensorboard_log="./runs",
                      seed=SEED)
 
 # Train the model
 print("Starting PPO training...")
-model.learn(total_timesteps=3000000, tb_log_name="ppo_trading_custom_features")
+model.learn(total_timesteps=3000000, tb_log_name="recurrent_ppo",)
 
 model.save("ppo_trading_model")

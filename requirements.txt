@@ -4,3 +4,4 @@ tensorboard
 matplotlib
 pandas
 numpy
+sb3-contrib
