@@ -328,6 +328,75 @@ def reward_function_5(
     return reward
 
 
+def reward_function_5_less_risk_averse(
+    history,
+    window: int = 30,            # look-back for risk metrics
+    r_free: float = 0.0,         # risk-free rate per step
+    w_return: float = 1.0,       # weights for each component
+    w_risk: float = 0.15,        # Lower risk aversion
+    w_drawdown: float = 0.1,     # Lower drawdown penalty
+    w_cost: float = 0.001,
+    w_alpha: float = 0.50,
+    clip_value: float = 1.0,
+    eps: float = 1e-8
+):
+    """
+    A less risk-averse version of reward_function_5.
+    This version reduces the penalties for risk and drawdown,
+    potentially encouraging the agent to explore more aggressive strategies.
+    """
+
+    # -------------- Safety checks --------------
+    if len(history) < 2:
+        return 0.0
+
+    # ---------- 1. Immediate (current) return ----------
+    curr_val = history["portfolio_valuation", -1]
+    prev_val = history["portfolio_valuation", -2]
+    r_t = np.log(curr_val / prev_val)                # robust to scale
+
+    # ---------- 2. Risk-adjusted return (Sharpe) ----------
+    # Take the last `window` log-returns
+    values = np.asarray(history["portfolio_valuation"], dtype=np.float64)
+    returns = np.diff(np.log(values[-(window + 1):]))
+    if returns.size > 1:
+        sharpe = (returns.mean() - r_free) / (returns.std() + eps)
+    else:
+        sharpe = 0.0
+
+    # ---------- 3. Draw-down ----------
+    peak = values.max()
+    drawdown = (peak - curr_val) / (peak + eps)      # ∈ [0,1]
+
+    # ---------- 4. Transaction-cost penalty ----------
+    pos_now = history["position", -1]
+    pos_prev = history["position", -2] if len(history) > 2 else pos_now
+    # 0 (no trade) … 2 (full flip)
+    turnover = abs(pos_now - pos_prev)
+
+    # ---------- 5. Market out-performance (alpha) ----------
+    if "data_close" in history.columns:
+        m_ret = np.log(history["data_close", -1] / history["data_close", -2])
+        alpha = r_t - m_ret
+    else:
+        alpha = 0.0
+
+    # ---------- Final weighted reward ----------
+    reward = (
+        w_return * r_t +
+        w_risk * sharpe -
+        w_drawdown * drawdown -
+        w_cost * turnover +
+        w_alpha * alpha
+    )
+
+    # ---------- Numerical housekeeping ----------
+    if np.isnan(reward) or np.isinf(reward):
+        reward = 0.0
+    reward = float(np.clip(reward, -clip_value, clip_value))
+    return reward
+
+
 def reward_function_5_aggressive(
     history,
     window: int = 30,

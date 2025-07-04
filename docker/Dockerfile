@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y \
     g++ \
     make \
     pkg-config \
+    screen \
+    zip \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and install ta-lib C library
