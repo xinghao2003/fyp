@@ -1,8 +1,10 @@
 .env
 venv/
 .venv/
-runs/
 *.pyc
 *.db
 *.sqlite
 *ssh_id*
+model/
+eval_logs/
+runs/
