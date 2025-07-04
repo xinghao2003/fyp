@@ -17,9 +17,8 @@ import shutil
 # Import different reward functions
 from reward import (
     reward_function_5_less_risk_averse as reward_func_1,
-    # Add other reward functions here as needed
-    # reward_function_sharpe as reward_func_2,
-    # reward_function_sortino as reward_func_3,
+    reward_function_5_aggressive as reward_func_2,
+    reward_function_5 as reward_func_3,
 )
 
 # Configure logging
@@ -73,12 +72,12 @@ def preprocess(df: pd.DataFrame):
 def get_reward_function(trial):
     """Select reward function based on trial suggestion"""
     reward_choice = trial.suggest_categorical(
-        'reward_function', ['risk_averse'])
+        'reward_function', ['risk_averse', 'aggressive', 'balanced'])
 
     reward_functions = {
         'risk_averse': reward_func_1,
-        # 'sharpe': reward_func_2,
-        # 'sortino': reward_func_3,
+        'aggressive': reward_func_2,
+        'balanced': reward_func_3,
     }
 
     return reward_functions[reward_choice]
@@ -194,7 +193,7 @@ def objective(trial):
 
         # Train the model
         model.learn(total_timesteps=1000000,  # Reduced for faster optimization
-                    callback=[eval_callback])
+                    callback=[eval_callback, pruning_callback])
 
         # Get final evaluation score
         if len(eval_callback.evaluations_results) > 0:

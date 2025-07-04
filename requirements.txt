@@ -6,4 +6,3 @@ pandas
 numpy
 sb3-contrib
 optuna
- w 
