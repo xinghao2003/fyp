@@ -85,6 +85,10 @@ def get_reward_function(trial):
 
 def objective(trial):
     """Optuna objective function for hyperparameter optimization"""
+    train_env = None
+    eval_env = None
+    trial_dir = None
+
     try:
         # Suggest hyperparameters
         learning_rate = trial.suggest_float(
@@ -156,28 +160,6 @@ def objective(trial):
                              device="cpu",
                              )
 
-        # Set up callbacks with pruning
-        class OptunaPruningCallback:
-            def __init__(self, trial, eval_freq):
-                self.trial = trial
-                self.eval_freq = eval_freq
-                self.eval_count = 0
-
-            def __call__(self, locals, globals):
-                self.eval_count += 1
-                if self.eval_count % (self.eval_freq // 1000) == 0:
-                    # Report intermediate value for pruning
-                    if len(locals['self'].evaluations_results) > 0:
-                        mean_reward = np.mean(
-                            locals['self'].evaluations_results[-1])
-                        self.trial.report(mean_reward, self.eval_count)
-
-                        # Prune trial if needed
-                        if self.trial.should_prune():
-                            raise optuna.TrialPruned()
-
-        pruning_callback = OptunaPruningCallback(trial, eval_freq=50000)
-
         stop_callback = StopTrainingOnNoModelImprovement(
             max_no_improvement_evals=5, min_evals=3, verbose=0)
 
@@ -193,7 +175,7 @@ def objective(trial):
 
         # Train the model
         model.learn(total_timesteps=1000000,  # Reduced for faster optimization
-                    callback=[eval_callback, pruning_callback])
+                    callback=[eval_callback])  # Remove pruning_callback for now
 
         # Get final evaluation score
         if len(eval_callback.evaluations_results) > 0:
@@ -202,38 +184,71 @@ def objective(trial):
             final_mean_reward = -np.inf
 
         # Clean up environments
-        train_env.close()
-        eval_env.close()
+        if train_env:
+            train_env.close()
+        if eval_env:
+            eval_env.close()
 
-        # Clean up trial directory if not the best
-        if final_mean_reward < trial.study.best_value if trial.study.best_value else True:
-            shutil.rmtree(trial_dir, ignore_errors=True)
+        # Clean up trial directory if not the best (with safe best_value access)
+        try:
+            current_best = trial.study.best_value
+            if final_mean_reward < current_best:
+                shutil.rmtree(trial_dir, ignore_errors=True)
+        except (AttributeError, ValueError):
+            # No best value exists yet or other database issue
+            # Keep the trial directory for now
+            pass
 
         return final_mean_reward
 
     except optuna.TrialPruned:
         # Clean up on pruning
-        try:
+        if train_env:
             train_env.close()
+        if eval_env:
             eval_env.close()
+        if trial_dir:
             shutil.rmtree(trial_dir, ignore_errors=True)
-        except:
-            pass
         raise
     except Exception as e:
         logger.error(f"Trial {trial.number} failed: {e}")
+        # Clean up on error
+        if train_env:
+            train_env.close()
+        if eval_env:
+            eval_env.close()
+        if trial_dir:
+            shutil.rmtree(trial_dir, ignore_errors=True)
         return -np.inf
 
 
 def run_optuna_optimization():
     """Run Optuna hyperparameter optimization"""
-    # Create study
-    study = optuna.create_study(
-        direction='maximize',
-        sampler=TPESampler(seed=SEED),
-        pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=10),
-        study_name=f"ppo_trading_{RUN_ID}"
-    )
+    # Create necessary directories
+    os.makedirs('optuna_studies', exist_ok=True)
+    os.makedirs(f'optuna_trials/{RUN_ID}', exist_ok=True)
+
+    # Create study with better error handling
+    study_db_path = f'sqlite:///optuna_studies/{RUN_ID}_study.db'
+
+    try:
+        study = optuna.create_study(
+            direction='maximize',
+            sampler=TPESampler(seed=SEED),
+            pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=10),
+            study_name=f"ppo_trading_{RUN_ID}",
+            storage=study_db_path,
+            load_if_exists=True,
+        )
+    except Exception as e:
+        logger.warning(
+            f"Failed to create study with database: {e}. Creating in-memory study.")
+        study = optuna.create_study(
+            direction='maximize',
+            sampler=TPESampler(seed=SEED),
+            pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=10),
+            study_name=f"ppo_trading_{RUN_ID}",
+        )
 
     print(f"Starting Optuna optimization with study: {study.study_name}")
 
