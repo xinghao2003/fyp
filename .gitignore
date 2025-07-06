@@ -9,4 +9,4 @@ model/
 eval_logs/
 runs/
 optuna_studies/
-optuna_trails/
+optuna_trials/

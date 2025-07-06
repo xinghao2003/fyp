@@ -1,0 +1,85 @@
+{
+    "U.S. Equity Benchmarks": [
+        "SPY",
+        "QQQ",
+        "IWM",
+        "DIA"
+    ],
+    "U.S. Sector / Thematic ETFs": [
+        "XLB",
+        "XLE",
+        "XLF",
+        "XLI",
+        "XLK",
+        "XLP",
+        "XLY",
+        "XLV",
+        "XLU",
+        "XLRE",
+        "XLC"
+    ],
+    "Large-Cap Single Stocks": [
+        "AAPL",
+        "MSFT",
+        "GOOGL",
+        "NVDA",
+        "META",
+        "AMZN",
+        "TSLA",
+        "HD",
+        "NKE",
+        "WMT",
+        "KO",
+        "PG",
+        "JPM",
+        "BAC",
+        "GS",
+        "JNJ",
+        "LLY",
+        "PFE",
+        "UNH",
+        "BA",
+        "CAT",
+        "XOM",
+        "CVX",
+        "COP",
+        "NEE",
+        "AMT"
+    ],
+    "Fixed-Income & Credit": [
+        "TLT",
+        "IEF",
+        "SHY",
+        "LQD",
+        "HYG"
+    ],
+    "Commodities": [
+        "GLD",
+        "SLV",
+        "USO",
+        "UNG",
+        "DBC"
+    ],
+    "Volatility & Tail-Risk": [
+        "^VIX",
+        "VXX"
+    ],
+    "Currencies (FX)": [
+        "EURUSD=X",
+        "USDJPY=X",
+        "GBPUSD=X",
+        "AUDUSD=X"
+    ],
+    "Crypto": [
+        "BTC-USD",
+        "ETH-USD",
+        "SOL-USD"
+    ],
+    "Non-U.S. Large Caps / ADRs": [
+        "TSM",
+        "BABA",
+        "TM",
+        "RIO",
+        "HSBC"
+    ]
+}

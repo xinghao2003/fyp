@@ -75,5 +75,5 @@ def split_csv_files(folder_path):
 
 if __name__ == "__main__":
     # Change this path to your data folder
-    data_folder = r"C:\Users\xingh\Desktop\latest_gym\preprocessing\1d-2005"
+    data_folder = r"1d-2005"
     split_csv_files(data_folder)

@@ -5,7 +5,7 @@ import glob
 
 # Get all CSV files in the 1d-2005 directory
 csv_files = glob.glob(
-    r'C:\Users\xingh\Desktop\latest_gym\preprocessing\1d-2005\*.csv')
+    r'1d-2005\*.csv')
 
 # Process each CSV file
 for csv_file in csv_files:
@@ -16,7 +16,7 @@ for csv_file in csv_files:
 
     # Wrap with stockstats and calculate MACD
     df = wrap(data)
-    macd = df['macd']  # This adds the MACD column to the dataframe
+    df.init_all()
 
     # Save the modified dataframe back to the same file
     df.to_csv(csv_file, index=True)

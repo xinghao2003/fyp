@@ -25,7 +25,7 @@ import numpy as np
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
-INPUT_DIR = "1d-2005"        # folder that contains Yahoo-Finance csv files
+INPUT_DIR = r"1d-2005"        # folder that contains Yahoo-Finance csv files
 
 # --------------------------------------------------------------------------
 # Main loop

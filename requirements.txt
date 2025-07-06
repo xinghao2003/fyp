@@ -6,3 +6,5 @@ pandas
 numpy
 sb3-contrib
 optuna
+stockstats
+yfinance

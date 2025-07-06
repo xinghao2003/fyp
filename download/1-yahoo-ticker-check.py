@@ -1,4 +1,5 @@
 import yfinance as yf
+import json
 import pandas as pd
 from datetime import datetime, timedelta
 
@@ -6,20 +7,17 @@ from datetime import datetime, timedelta
 def check_yahoo_symbols():
     """Check if symbols exist on Yahoo Finance"""
 
-    # Define symbols by category
-    symbols_by_category = {
-        "U.S. Equity Benchmarks": ["SPY", "QQQ", "IWM", "DIA"],
-        "U.S. Sector / Thematic ETFs": ["XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLY", "XLV", "XLU", "XLRE", "XLC"],
-        "Large-Cap Single Stocks": ["AAPL", "MSFT", "GOOGL", "NVDA", "META", "AMZN", "TSLA", "HD", "NKE", "WMT",
-                                    "KO", "PG", "JPM", "BAC", "GS", "JNJ", "LLY", "PFE", "UNH", "BA", "CAT",
-                                    "XOM", "CVX", "COP", "NEE", "AMT"],
-        "Fixed-Income & Credit": ["TLT", "IEF", "SHY", "LQD", "HYG"],
-        "Commodities": ["GLD", "SLV", "USO", "UNG", "DBC"],
-        "Volatility & Tail-Risk": ["^VIX", "VXX"],
-        "Currencies (FX)": ["EURUSD=X", "USDJPY=X", "GBPUSD=X", "AUDUSD=X"],
-        "Crypto": ["BTC-USD", "ETH-USD", "SOL-USD"],
-        "Non-U.S. Large Caps / ADRs": ["TSM", "BABA", "TM", "RIO", "HSBC"]
-    }
+    # Load symbols from tickers.json
+
+    try:
+        with open('tickers.json', 'r') as f:
+            symbols_by_category = json.load(f)
+    except FileNotFoundError:
+        print("Error: tickers.json file not found!")
+        return pd.DataFrame()
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON format in tickers.json!")
+        return pd.DataFrame()
 
     results = []
 

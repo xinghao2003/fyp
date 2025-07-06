@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import datetime
 import os
+import json
 
 
 def download_stock_data(symbols=["AAPL"], period="1y", interval="1h", output_dir=None):
@@ -154,21 +155,17 @@ def download_aapl_data(period="1y", interval="1h", filename="AAPL_USD-Hourly.csv
 
 
 if __name__ == "__main__":
-    # Define symbols by category
-    symbols_by_category = {
-        # "U.S. Equity Benchmarks": ["SPY", "QQQ", "IWM", "DIA"],
-        # "U.S. Sector / Thematic ETFs": ["XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLY", "XLV", "XLU", "XLRE", "XLC"],
-        # "Large-Cap Single Stocks": ["AAPL", "MSFT", "GOOGL", "NVDA", "META", "AMZN", "TSLA", "HD", "NKE", "WMT",
-        #                             "KO", "PG", "JPM", "BAC", "GS", "JNJ", "LLY", "PFE", "UNH", "BA", "CAT",
-        #                             "XOM", "CVX", "COP", "NEE", "AMT"],
-        # "Fixed-Income & Credit": ["TLT", "IEF", "SHY", "LQD", "HYG"],
-        # "Commodities": ["GLD", "SLV", "USO", "UNG", "DBC"],
-        # "Volatility & Tail-Risk": ["^VIX", "VXX"],
-        # "Currencies (FX)": ["EURUSD=X", "USDJPY=X", "GBPUSD=X", "AUDUSD=X"],
-        # "Crypto": ["BTC-USD", "ETH-USD", "SOL-USD"],
-        # "Non-U.S. Large Caps / ADRs": ["TSM", "BABA", "TM", "RIO", "HSBC"],
-        "Test": ["6033.KL"]
-    }
+    # Load symbols from tickers.json
+
+    try:
+        with open('tickers.json', 'r') as f:
+            symbols_by_category = json.load(f)
+    except FileNotFoundError:
+        print("Error: tickers.json file not found!")
+        exit(1)
+    except json.JSONDecodeError:
+        print("Error: Invalid JSON format in tickers.json!")
+        exit(1)
 
     # Flatten all symbols into a single list
     all_symbols = []

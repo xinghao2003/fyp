@@ -44,7 +44,7 @@ def calculate_total_records(folder_path):
 
 if __name__ == "__main__":
     # Set the folder path - change this to your actual folder path
-    folder_path = r"C:\Users\xingh\Desktop\fyp-code\preprocessing\1d-2005\train"
+    folder_path = r"1d-max"
 
     # If no path provided, use current directory
     if not folder_path:

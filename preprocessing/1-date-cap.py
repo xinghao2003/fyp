@@ -60,7 +60,7 @@ def process_csv_files(folder_path):
 
 if __name__ == "__main__":
     # Set the folder path - change this to your actual folder path
-    folder_path = r"C:\Users\xingh\Desktop\latest_gym\download\1d-2005"
+    folder_path = r"1d-2005"
 
     # If no path provided, use current directory
     if not folder_path:
