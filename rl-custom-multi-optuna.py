@@ -55,18 +55,81 @@ set_seeds(SEED)
 # Custom preprocessing function
 
 
-def preprocess(df: pd.DataFrame):
-    # Create your features
-    try:
-        df["feature_close"] = df["close"]
-        df["feature_volume"] = df["volume"]
-        df["feature_high"] = df["high"]
-        df["feature_low"] = df["low"]
-        df["feature_open"] = df["open"]
-        df["feature_macd"] = df["macd"]     # macd feature for trend detection
-    except Exception as e:
-        print(f"Error during preprocessing: {e}")
-    return df
+def create_preprocess_function(feature_config):
+    """Create a preprocessing function based on feature configuration"""
+    def preprocess(df: pd.DataFrame):
+        # Create your features based on the configuration
+        try:
+            # Basic price features (always included for trading)
+            df["feature_close"] = df["close"]
+
+            # Optional features based on trial suggestions
+            if feature_config.get('use_volume', True):
+                df["feature_volume"] = df["volume"]
+
+            if feature_config.get('use_high', True):
+                df["feature_high"] = df["high"]
+
+            if feature_config.get('use_low', True):
+                df["feature_low"] = df["low"]
+
+            if feature_config.get('use_open', True):
+                df["feature_open"] = df["open"]
+
+            # Technical indicators
+            if feature_config.get('use_macd', True):
+                # macd feature for trend detection
+                df["feature_macd"] = df["macd"]
+
+            if feature_config.get('use_rsi', False):
+                if 'rsi' in df.columns:
+                    df["feature_rsi"] = df["rsi"]
+
+            if feature_config.get('use_sma', False):
+                if 'close_10_sma' in df.columns:
+                    df["feature_sma"] = df["close_10_sma"]
+
+            if feature_config.get('use_ema', False):
+                if 'close_10_ema' in df.columns:
+                    df["feature_ema"] = df["close_10_ema"]
+
+            if feature_config.get('use_adx', False):
+                if 'adx' in df.columns:
+                    df["feature_adx"] = df["adx"]
+
+            if feature_config.get('use_bb_upper', False):
+                if 'boll_ub' in df.columns:
+                    df["feature_bb_upper"] = df["boll_ub"]
+
+            if feature_config.get('use_bb_lower', False):
+                if 'boll_lb' in df.columns:
+                    df["feature_bb_lower"] = df["boll_lb"]
+
+            if feature_config.get('use_bb_middle', False):
+                if 'boll' in df.columns:
+                    df["feature_bb_middle"] = df["boll"]
+
+            if feature_config.get('use_stoch_k', False):
+                if 'kdjk' in df.columns:
+                    df["feature_stoch_k"] = df["kdjk"]
+
+            if feature_config.get('use_stoch_d', False):
+                if 'kdjd' in df.columns:
+                    df["feature_stoch_d"] = df["kdjd"]
+
+            if feature_config.get('use_stoch_j', False):
+                if 'kdjj' in df.columns:
+                    df["feature_stoch_j"] = df["kdjj"]
+
+            if feature_config.get('use_atr', False):
+                if 'atr' in df.columns:
+                    df["feature_atr"] = df["atr"]
+
+        except Exception as e:
+            print(f"Error during preprocessing: {e}")
+        return df
+
+    return preprocess
 
 
 def get_reward_function(trial):
@@ -109,6 +172,56 @@ def objective(trial):
         borrow_interest_rate = trial.suggest_float(
             'borrow_interest_rate', 0.0001, 0.0005)
 
+        # Feature selection hyperparameters
+        # Note: 'close' price is always included as it's essential for trading
+        # Other features are optional and will be optimized by Optuna
+        feature_config = {
+            # Basic OHLCV features (volume, high, low, open are optional)
+            'use_volume': trial.suggest_categorical('use_volume', [True, False]),
+            'use_high': trial.suggest_categorical('use_high', [True, False]),
+            'use_low': trial.suggest_categorical('use_low', [True, False]),
+            'use_open': trial.suggest_categorical('use_open', [True, False]),
+
+            # Momentum Indicators
+            # Relative Strength Index
+            'use_rsi': trial.suggest_categorical('use_rsi', [True, False]),
+            # Moving Average Convergence Divergence
+            'use_macd': trial.suggest_categorical('use_macd', [True, False]),
+            # Stochastic Oscillator %K
+            'use_stoch_k': trial.suggest_categorical('use_stoch_k', [True, False]),
+            # Stochastic Oscillator %D
+            'use_stoch_d': trial.suggest_categorical('use_stoch_d', [True, False]),
+            # Stochastic Oscillator %J
+            'use_stoch_j': trial.suggest_categorical('use_stoch_j', [True, False]),
+
+            # Trend Indicators
+            # Simple Moving Average
+            'use_sma': trial.suggest_categorical('use_sma', [True, False]),
+            # Exponential Moving Average
+            'use_ema': trial.suggest_categorical('use_ema', [True, False]),
+            # Average Directional Index
+            'use_adx': trial.suggest_categorical('use_adx', [True, False]),
+
+            # Volatility Indicators
+            # Bollinger Bands Upper
+            'use_bb_upper': trial.suggest_categorical('use_bb_upper', [True, False]),
+            # Bollinger Bands Lower
+            'use_bb_lower': trial.suggest_categorical('use_bb_lower', [True, False]),
+            # Bollinger Bands Middle
+            'use_bb_middle': trial.suggest_categorical('use_bb_middle', [True, False]),
+            # Average True Range
+            'use_atr': trial.suggest_categorical('use_atr', [True, False]),
+        }
+
+        # Create preprocessing function with selected features
+        preprocess_func = create_preprocess_function(feature_config)
+
+        # Log selected features for this trial
+        selected_features = [feature for feature, enabled in feature_config.items()
+                             if enabled and not feature.endswith('_window')]
+        logger.info(
+            f"Trial {trial.number}: Selected features: {selected_features}")
+
         # Get reward function
         custom_reward_function = get_reward_function(trial)
 
@@ -120,7 +233,7 @@ def objective(trial):
         train_env = gym.make('MultiDatasetTradingEnv',
                              dataset_dir='dataset/1d-2005/train/*.pkl',
                              reward_function=custom_reward_function,
-                             preprocess=preprocess,
+                             preprocess=preprocess_func,
                              windows=windows,
                              positions=[-1, 0, 1],
                              trading_fees=trading_fees,
@@ -133,7 +246,7 @@ def objective(trial):
         eval_env = gym.make('MultiDatasetTradingEnv',
                             dataset_dir='dataset/1d-2005/val/*.pkl',
                             reward_function=custom_reward_function,
-                            preprocess=preprocess,
+                            preprocess=preprocess_func,
                             windows=windows,
                             positions=[-1, 0, 1],
                             trading_fees=trading_fees,
@@ -278,11 +391,37 @@ def run_optuna_optimization():
     temp_trial = optuna.trial.FixedTrial(best_trial.params)
     best_reward_function = get_reward_function(temp_trial)
 
+    # Create best feature configuration
+    best_feature_config = {
+        'use_volume': best_trial.params.get('use_volume', True),
+        'use_high': best_trial.params.get('use_high', True),
+        'use_low': best_trial.params.get('use_low', True),
+        'use_open': best_trial.params.get('use_open', True),
+        # Momentum Indicators
+        'use_rsi': best_trial.params.get('use_rsi', False),
+        'use_macd': best_trial.params.get('use_macd', True),
+        'use_stoch_k': best_trial.params.get('use_stoch_k', False),
+        'use_stoch_d': best_trial.params.get('use_stoch_d', False),
+        'use_stoch_j': best_trial.params.get('use_stoch_j', False),
+        # Trend Indicators
+        'use_sma': best_trial.params.get('use_sma', False),
+        'use_ema': best_trial.params.get('use_ema', False),
+        'use_adx': best_trial.params.get('use_adx', False),
+        # Volatility Indicators
+        'use_bb_upper': best_trial.params.get('use_bb_upper', False),
+        'use_bb_lower': best_trial.params.get('use_bb_lower', False),
+        'use_bb_middle': best_trial.params.get('use_bb_middle', False),
+        'use_atr': best_trial.params.get('use_atr', False),
+    }
+
+    # Create best preprocessing function
+    best_preprocess_func = create_preprocess_function(best_feature_config)
+
     # Create final environments
     final_train_env = gym.make('MultiDatasetTradingEnv',
                                dataset_dir='dataset/1d-2005/train/*.pkl',
                                reward_function=best_reward_function,
-                               preprocess=preprocess,
+                               preprocess=best_preprocess_func,
                                windows=best_trial.params['windows'],
                                positions=[-1, 0, 1],
                                trading_fees=best_trial.params['trading_fees'],
@@ -292,7 +431,7 @@ def run_optuna_optimization():
     final_eval_env = gym.make('MultiDatasetTradingEnv',
                               dataset_dir='dataset/1d-2005/val/*.pkl',
                               reward_function=best_reward_function,
-                              preprocess=preprocess,
+                              preprocess=best_preprocess_func,
                               windows=best_trial.params['windows'],
                               positions=[-1, 0, 1],
                               trading_fees=best_trial.params['trading_fees'],
@@ -343,12 +482,30 @@ def run_optuna_optimization():
 
     final_model.save(f"./model/{RUN_ID}/final_optimized_model")
 
-    # Save best parameters
+    # Save best parameters including feature configuration
     import json
+    complete_config = {
+        'hyperparameters': best_trial.params,
+        'feature_config': best_feature_config,
+        'run_id': RUN_ID,
+        'study_name': study.study_name,
+        'best_value': study.best_value,
+        'best_trial_number': best_trial.number
+    }
+
     with open(f"./model/{RUN_ID}/best_params.json", 'w') as f:
-        json.dump(best_trial.params, f, indent=2)
+        json.dump(complete_config, f, indent=2)
+
+    # Also save feature configuration separately for easy access
+    with open(f"./model/{RUN_ID}/feature_config.json", 'w') as f:
+        json.dump(best_feature_config, f, indent=2)
 
     print(f"Optimization complete! Best model saved with ID: {RUN_ID}")
+    print(f"Best feature configuration:")
+    for feature, enabled in best_feature_config.items():
+        if enabled and not feature.endswith('_window'):
+            print(f"  - {feature}: {enabled}")
+
     return study
 
 

@@ -18,6 +18,9 @@ for csv_file in csv_files:
     df = wrap(data)
     df.init_all()
 
+    close_10_ema = df["close_10_ema"]
+    close_10_sma = df["close_10_sma"]
+
     # Save the modified dataframe back to the same file
     df.to_csv(csv_file, index=True)
 
