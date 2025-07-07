@@ -135,7 +135,7 @@ def create_tunable_reward_function(trial):
     w_return = trial.suggest_float('w_return', 0.5, 2.0)
     w_risk = trial.suggest_float('w_risk', 0.0, 1.0)
     w_drawdown = trial.suggest_float('w_drawdown', 0.0, 1.0)
-    w_cost = trial.suggest_float('w_cost', 0.0, 0.01)
+    w_cost = trial.suggest_float('w_cost', 0.0001, 0.01)
     w_alpha = trial.suggest_float('w_alpha', 0.0, 1.0)
 
     # Other reward function parameters
@@ -170,15 +170,15 @@ def objective(trial):
         n_steps = trial.suggest_categorical('n_steps', [512, 1024, 2048, 4096])
         batch_size = trial.suggest_categorical(
             'batch_size', [32, 64, 128, 256])
-        n_epochs = trial.suggest_int('n_epochs', 5, 20)
+        n_epochs = trial.suggest_int('n_epochs', 3, 30)
         gamma = trial.suggest_float('gamma', 0.9, 0.9999)
         gae_lambda = trial.suggest_float('gae_lambda', 0.8, 0.99)
         clip_range = trial.suggest_float('clip_range', 0.1, 0.4)
-        ent_coef = trial.suggest_float('ent_coef', 1e-8, 1e-1, log=True)
+        ent_coef = trial.suggest_float('ent_coef', 1e-4, 1e-2, log=True)
         vf_coef = trial.suggest_float('vf_coef', 0.1, 1.0)
 
         # PPO-specific hyperparameters
-        windows = trial.suggest_int('windows', 10, 30)
+        windows = trial.suggest_int('windows', 5, 60)
         trading_fees = trial.suggest_float('trading_fees', 0.0005, 0.002)
         borrow_interest_rate = trial.suggest_float(
             'borrow_interest_rate', 0.0001, 0.0005)
@@ -302,14 +302,14 @@ def objective(trial):
                                      best_model_save_path=trial_dir,
                                      log_path=trial_dir,
                                      eval_freq=50000,
-                                     n_eval_episodes=3,
+                                     n_eval_episodes=5,
                                      deterministic=True,
                                      render=False,
                                      callback_after_eval=stop_callback,
                                      verbose=0)
 
         # Train the model
-        model.learn(total_timesteps=1000000,  # Reduced for faster optimization
+        model.learn(total_timesteps=2000000,  # Reduced for faster optimization
                     callback=[eval_callback])  # Remove pruning_callback for now
 
         # Get final evaluation score
