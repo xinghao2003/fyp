@@ -2,7 +2,7 @@ import gym_trading_env
 import gymnasium as gym
 import pandas as pd
 from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnNoModelImprovement
+from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnNoModelImprovement, BaseCallback, CallbackList
 from stable_baselines3.common.monitor import Monitor
 import numpy as np
 import random
@@ -157,6 +157,30 @@ def create_tunable_reward_function(trial):
     return tunable_reward_function
 
 
+class OptunaPruningCallback(BaseCallback):
+    """Custom callback for Optuna pruning during training"""
+
+    def __init__(self, trial: optuna.Trial, verbose: int = 0):
+        super().__init__(verbose)
+        self.trial = trial
+
+    def _on_step(self) -> bool:
+        # This callback is called after each evaluation by EvalCallback,
+        # so we can access the last mean reward.
+        assert self.parent is not None, "OptunaPruningCallback must be used with an EvalCallback"
+        last_mean_reward = self.parent.last_mean_reward
+
+        # Optuna expects steps to be monotonically increasing
+        step = self.parent.eval_idx
+
+        self.trial.report(last_mean_reward, step)
+
+        if self.trial.should_prune():
+            raise optuna.TrialPruned()
+
+        return True
+
+
 def objective(trial):
     """Optuna objective function for hyperparameter optimization"""
     train_env = None
@@ -298,6 +322,12 @@ def objective(trial):
         stop_callback = StopTrainingOnNoModelImprovement(
             max_no_improvement_evals=5, min_evals=3, verbose=0)
 
+        # Create pruning callback
+        pruning_callback = OptunaPruningCallback(trial)
+
+        # Chain the callbacks
+        callback_list = CallbackList([stop_callback, pruning_callback])
+
         eval_callback = EvalCallback(eval_env,
                                      best_model_save_path=trial_dir,
                                      log_path=trial_dir,
@@ -305,12 +335,12 @@ def objective(trial):
                                      n_eval_episodes=5,
                                      deterministic=True,
                                      render=False,
-                                     callback_after_eval=stop_callback,
+                                     callback_after_eval=callback_list,
                                      verbose=0)
 
-        # Train the model
-        model.learn(total_timesteps=2000000,  # Reduced for faster optimization
-                    callback=[eval_callback])  # Remove pruning_callback for now
+        # Train the model with pruning enabled
+        model.learn(total_timesteps=2000000,
+                    callback=eval_callback)
 
         # Get final evaluation score
         if len(eval_callback.evaluations_results) > 0:
@@ -370,7 +400,11 @@ def run_optuna_optimization():
         study = optuna.create_study(
             direction='maximize',
             sampler=TPESampler(seed=SEED),
-            pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=10),
+            pruner=MedianPruner(
+                n_startup_trials=10,    # Increased for better baseline
+                n_warmup_steps=15,      # Increased for more stable pruning
+                interval_steps=5        # Check every 5 evaluations
+            ),
             study_name=f"ppo_trading_{RUN_ID}",
             storage=study_db_path,
             load_if_exists=True,
@@ -381,13 +415,18 @@ def run_optuna_optimization():
         study = optuna.create_study(
             direction='maximize',
             sampler=TPESampler(seed=SEED),
-            pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=10),
+            pruner=MedianPruner(
+                n_startup_trials=10,
+                n_warmup_steps=15,
+                interval_steps=5
+            ),
             study_name=f"ppo_trading_{RUN_ID}",
         )
 
     print(f"Starting Optuna optimization with study: {study.study_name}")
+    print("Pruning enabled: Early stopping of unpromising trials")
 
-    # Optimize
+    # Optimize with pruning
     study.optimize(objective, n_trials=50, timeout=3600*12)  # 12 hours timeout
 
     # Print results
