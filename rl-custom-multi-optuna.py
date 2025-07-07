@@ -13,17 +13,26 @@ from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 import logging
 import shutil
+import traceback
+import sys
 
 # Import base reward function
 from reward import reward_function_5
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # Generate unique timestamp-based ID for this run
 RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 print(f"Please record this ID for tracking: {RUN_ID}")
+
+# Configure logging with more detailed format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(f'debug_{RUN_ID}.log')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Set seeds for reproducibility
 SEED = 42
@@ -56,73 +65,153 @@ def create_preprocess_function(feature_config):
     def preprocess(df: pd.DataFrame):
         # Create your features based on the configuration
         try:
-            # Basic price features (always included for trading)
-            df["feature_close"] = df["close"]
+            # Log detailed DataFrame information for debugging
+            logger.debug(f"Input DataFrame shape: {df.shape}")
+            logger.debug(f"Available columns: {df.columns.tolist()}")
+            logger.debug(
+                f"DataFrame index range: {df.index.min()} to {df.index.max()}")
+            logger.debug(f"DataFrame head:\n{df.head()}")
+            logger.debug(f"DataFrame info:\n{df.info()}")
 
-            # Optional features based on trial suggestions
+            # Check for empty DataFrame
+            if df.empty:
+                logger.error("Input DataFrame is empty!")
+                raise ValueError("Input DataFrame is empty")
+
+            # Check for NaN values
+            nan_counts = df.isnull().sum()
+            if nan_counts.any():
+                logger.warning(
+                    f"NaN values found in columns: {nan_counts[nan_counts > 0].to_dict()}")
+
+            # Basic price features (always included for trading)
+            if 'close' in df.columns:
+                df["feature_close"] = df["close"]
+            else:
+                logger.error("Critical: 'close' column not found in dataset!")
+                raise ValueError(
+                    "'close' column is required but not found in dataset")
+
+            # Optional features based on trial suggestions with validation
             if feature_config.get('use_volume', True):
-                df["feature_volume"] = df["volume"]
+                if 'volume' in df.columns:
+                    df["feature_volume"] = df["volume"]
+                else:
+                    logger.debug("'volume' column not found in dataset")
 
             if feature_config.get('use_high', True):
-                df["feature_high"] = df["high"]
+                if 'high' in df.columns:
+                    df["feature_high"] = df["high"]
+                else:
+                    logger.debug("'high' column not found in dataset")
 
             if feature_config.get('use_low', True):
-                df["feature_low"] = df["low"]
+                if 'low' in df.columns:
+                    df["feature_low"] = df["low"]
+                else:
+                    logger.debug("'low' column not found in dataset")
 
             if feature_config.get('use_open', True):
-                df["feature_open"] = df["open"]
+                if 'open' in df.columns:
+                    df["feature_open"] = df["open"]
+                else:
+                    logger.debug("'open' column not found in dataset")
 
-            # Technical indicators
+            # Technical indicators with validation
             if feature_config.get('use_macd', True):
-                # macd feature for trend detection
-                df["feature_macd"] = df["macd"]
+                if 'macd' in df.columns:
+                    df["feature_macd"] = df["macd"]
+                else:
+                    logger.debug("'macd' column not found in dataset")
 
             if feature_config.get('use_rsi', False):
                 if 'rsi' in df.columns:
                     df["feature_rsi"] = df["rsi"]
+                else:
+                    logger.debug("'rsi' column not found in dataset")
 
             if feature_config.get('use_sma', False):
                 if 'close_10_sma' in df.columns:
                     df["feature_sma"] = df["close_10_sma"]
+                else:
+                    logger.debug("'close_10_sma' column not found in dataset")
 
             if feature_config.get('use_ema', False):
                 if 'close_10_ema' in df.columns:
                     df["feature_ema"] = df["close_10_ema"]
+                else:
+                    logger.debug("'close_10_ema' column not found in dataset")
 
             if feature_config.get('use_adx', False):
                 if 'adx' in df.columns:
                     df["feature_adx"] = df["adx"]
+                else:
+                    logger.debug("'adx' column not found in dataset")
 
             if feature_config.get('use_bb_upper', False):
                 if 'boll_ub' in df.columns:
                     df["feature_bb_upper"] = df["boll_ub"]
+                else:
+                    logger.debug("'boll_ub' column not found in dataset")
 
             if feature_config.get('use_bb_lower', False):
                 if 'boll_lb' in df.columns:
                     df["feature_bb_lower"] = df["boll_lb"]
+                else:
+                    logger.debug("'boll_lb' column not found in dataset")
 
             if feature_config.get('use_bb_middle', False):
                 if 'boll' in df.columns:
                     df["feature_bb_middle"] = df["boll"]
+                else:
+                    logger.debug("'boll' column not found in dataset")
 
             if feature_config.get('use_stoch_k', False):
                 if 'kdjk' in df.columns:
                     df["feature_stoch_k"] = df["kdjk"]
+                else:
+                    logger.debug("'kdjk' column not found in dataset")
 
             if feature_config.get('use_stoch_d', False):
                 if 'kdjd' in df.columns:
                     df["feature_stoch_d"] = df["kdjd"]
+                else:
+                    logger.debug("'kdjd' column not found in dataset")
 
             if feature_config.get('use_stoch_j', False):
                 if 'kdjj' in df.columns:
                     df["feature_stoch_j"] = df["kdjj"]
+                else:
+                    logger.debug("'kdjj' column not found in dataset")
 
             if feature_config.get('use_atr', False):
                 if 'atr' in df.columns:
                     df["feature_atr"] = df["atr"]
+                else:
+                    logger.debug("'atr' column not found in dataset")
+
+            # Validate that we have at least some features
+            feature_columns = [
+                col for col in df.columns if col.startswith('feature_')]
+            if len(feature_columns) == 0:
+                logger.error(
+                    "No feature columns created! Check dataset and feature configuration.")
+                raise ValueError(
+                    "No valid features could be created from the dataset")
+
+            logger.debug(
+                f"Created {len(feature_columns)} features: {feature_columns}")
+            logger.debug(f"Output DataFrame shape: {df.shape}")
+            logger.debug(
+                f"Feature columns data types: {df[feature_columns].dtypes.to_dict()}")
 
         except Exception as e:
-            print(f"Error during preprocessing: {e}")
+            logger.error(f"Error during preprocessing: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            logger.error(f"Available columns: {df.columns.tolist()}")
+            logger.error(f"DataFrame shape: {df.shape}")
+            logger.error(f"Feature config: {feature_config}")
+            raise
         return df
 
     return preprocess
@@ -143,16 +232,46 @@ def create_tunable_reward_function(trial):
     clip_value = trial.suggest_float('clip_value', 0.5, 2.0)
 
     def tunable_reward_function(history):
-        return reward_function_5(
-            history=history,
-            window=window,
-            w_return=w_return,
-            w_risk=w_risk,
-            w_drawdown=w_drawdown,
-            w_cost=w_cost,
-            w_alpha=w_alpha,
-            clip_value=clip_value
-        )
+        try:
+            # Add validation before calling reward function
+            if history is None:
+                logger.error("History is None in reward function")
+                raise ValueError("History cannot be None")
+
+            # Log history information for debugging
+            if hasattr(history, 'shape'):
+                logger.debug(f"History shape: {history.shape}")
+            elif hasattr(history, '__len__'):
+                logger.debug(f"History length: {len(history)}")
+            else:
+                logger.debug(f"History type: {type(history)}")
+
+            # Check if history is a pandas DataFrame or Series
+            if hasattr(history, 'index'):
+                logger.debug(f"History index length: {len(history.index)}")
+                if hasattr(history, 'columns'):
+                    logger.debug(
+                        f"History columns: {history.columns.tolist()}")
+
+            return reward_function_5(
+                history=history,
+                window=window,
+                w_return=w_return,
+                w_risk=w_risk,
+                w_drawdown=w_drawdown,
+                w_cost=w_cost,
+                w_alpha=w_alpha,
+                clip_value=clip_value
+            )
+        except Exception as e:
+            logger.error(f"Error in tunable_reward_function: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            logger.error(f"History type: {type(history)}")
+            if hasattr(history, 'shape'):
+                logger.error(f"History shape: {history.shape}")
+            elif hasattr(history, '__len__'):
+                logger.error(f"History length: {len(history)}")
+            raise
 
     return tunable_reward_function
 
@@ -171,7 +290,7 @@ class OptunaPruningCallback(BaseCallback):
         last_mean_reward = self.parent.last_mean_reward
 
         # Optuna expects steps to be monotonically increasing
-        step = self.parent.eval_idx
+        step = self.parent.n_calls
 
         self.trial.report(last_mean_reward, step)
 
@@ -186,8 +305,11 @@ def objective(trial):
     train_env = None
     eval_env = None
     trial_dir = None
+    model = None
 
     try:
+        logger.info(f"Starting trial {trial.number}")
+
         # Suggest hyperparameters
         learning_rate = trial.suggest_float(
             'learning_rate', 1e-5, 1e-2, log=True)
@@ -202,7 +324,8 @@ def objective(trial):
         vf_coef = trial.suggest_float('vf_coef', 0.1, 1.0)
 
         # PPO-specific hyperparameters
-        windows = trial.suggest_int('windows', 5, 60)
+        # Increased minimum window size
+        windows = trial.suggest_int('windows', 10, 60)
         trading_fees = trial.suggest_float('trading_fees', 0.0005, 0.002)
         borrow_interest_rate = trial.suggest_float(
             'borrow_interest_rate', 0.0001, 0.0005)
@@ -251,6 +374,9 @@ def objective(trial):
         # Create preprocessing function with selected features
         preprocess_func = create_preprocess_function(feature_config)
 
+        # Get reward function with tunable weights
+        custom_reward_function = create_tunable_reward_function(trial)
+
         # Log selected features and reward weights for this trial
         selected_features = [feature for feature, enabled in feature_config.items()
                              if enabled and not feature.endswith('_window')]
@@ -267,57 +393,96 @@ def objective(trial):
             f"Trial {trial.number}: Selected features: {selected_features}")
         logger.info(
             f"Trial {trial.number}: Reward weights: {reward_weights}")
-
-        # Get reward function with tunable weights
-        custom_reward_function = create_tunable_reward_function(trial)
+        logger.info(f"Trial {trial.number}: Windows size: {windows}")
 
         # Create trial-specific directory
         trial_dir = f"./optuna_trials/{RUN_ID}/trial_{trial.number}"
         os.makedirs(trial_dir, exist_ok=True)
 
-        # Training environment
-        train_env = gym.make('MultiDatasetTradingEnv',
-                             dataset_dir='dataset/1d-2005/train/*.pkl',
-                             reward_function=custom_reward_function,
-                             preprocess=preprocess_func,
-                             windows=windows,
-                             positions=[-1, 0, 1],
-                             trading_fees=trading_fees,
-                             borrow_interest_rate=borrow_interest_rate,
-                             )
+        # Training environment with better error handling
+        try:
+            logger.info(
+                f"Trial {trial.number}: Creating training environment...")
+            train_env = gym.make('MultiDatasetTradingEnv',
+                                 dataset_dir='dataset/1d-2005/train/*.pkl',
+                                 reward_function=custom_reward_function,
+                                 preprocess=preprocess_func,
+                                 windows=windows,
+                                 positions=[-1, 0, 1],
+                                 trading_fees=trading_fees,
+                                 borrow_interest_rate=borrow_interest_rate,
+                                 )
 
-        train_env.reset(seed=SEED + trial.number)
+            logger.info(
+                f"Trial {trial.number}: Resetting training environment...")
+            obs, info = train_env.reset(seed=SEED + trial.number)
+            logger.info(
+                f"Trial {trial.number}: Training env reset successful. Obs shape: {obs.shape if hasattr(obs, 'shape') else type(obs)}")
+            logger.debug(
+                f"Trial {trial.number}: Training environment info: {info}")
 
-        # Create evaluation environment
-        eval_env = gym.make('MultiDatasetTradingEnv',
-                            dataset_dir='dataset/1d-2005/val/*.pkl',
-                            reward_function=custom_reward_function,
-                            preprocess=preprocess_func,
-                            windows=windows,
-                            positions=[-1, 0, 1],
-                            trading_fees=trading_fees,
-                            borrow_interest_rate=borrow_interest_rate,
-                            )
+        except Exception as e:
+            logger.error(
+                f"Trial {trial.number}: Failed to create/reset training environment")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            raise
 
-        eval_env.reset(seed=SEED + trial.number)
-        eval_env = Monitor(eval_env)
+        # Create evaluation environment with better error handling
+        try:
+            logger.info(
+                f"Trial {trial.number}: Creating evaluation environment...")
+            eval_env = gym.make('MultiDatasetTradingEnv',
+                                dataset_dir='dataset/1d-2005/val/*.pkl',
+                                reward_function=custom_reward_function,
+                                preprocess=preprocess_func,
+                                windows=windows,
+                                positions=[-1, 0, 1],
+                                trading_fees=trading_fees,
+                                borrow_interest_rate=borrow_interest_rate,
+                                )
+
+            logger.info(
+                f"Trial {trial.number}: Resetting evaluation environment...")
+            obs, info = eval_env.reset(seed=SEED + trial.number)
+            logger.info(
+                f"Trial {trial.number}: Eval env reset successful. Obs shape: {obs.shape if hasattr(obs, 'shape') else type(obs)}")
+            eval_env = Monitor(eval_env)
+
+        except Exception as e:
+            logger.error(
+                f"Trial {trial.number}: Failed to create/reset evaluation environment")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            if train_env:
+                train_env.close()
+            raise
 
         # Create model with suggested hyperparameters
-        model = RecurrentPPO("MlpLstmPolicy",
-                             train_env,
-                             learning_rate=learning_rate,
-                             n_steps=n_steps,
-                             batch_size=batch_size,
-                             n_epochs=n_epochs,
-                             gamma=gamma,
-                             gae_lambda=gae_lambda,
-                             clip_range=clip_range,
-                             ent_coef=ent_coef,
-                             vf_coef=vf_coef,
-                             verbose=0,
-                             seed=SEED + trial.number,
-                             device="cpu",
-                             )
+        try:
+            logger.info(f"Trial {trial.number}: Creating model...")
+            model = RecurrentPPO("MlpLstmPolicy",
+                                 train_env,
+                                 learning_rate=learning_rate,
+                                 n_steps=n_steps,
+                                 batch_size=batch_size,
+                                 n_epochs=n_epochs,
+                                 gamma=gamma,
+                                 gae_lambda=gae_lambda,
+                                 clip_range=clip_range,
+                                 ent_coef=ent_coef,
+                                 vf_coef=vf_coef,
+                                 verbose=0,
+                                 seed=SEED + trial.number,
+                                 device="cpu",
+                                 )
+            logger.info(f"Trial {trial.number}: Model created successfully")
+        except Exception as e:
+            logger.error(f"Trial {trial.number}: Failed to create model")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            if train_env:
+                train_env.close()
+            if eval_env:
+                eval_env.close()
+            raise
 
         stop_callback = StopTrainingOnNoModelImprovement(
             max_no_improvement_evals=5, min_evals=3, verbose=0)
@@ -339,8 +504,23 @@ def objective(trial):
                                      verbose=0)
 
         # Train the model with pruning enabled
-        model.learn(total_timesteps=2000000,
-                    callback=eval_callback)
+        try:
+            logger.info(f"Trial {trial.number}: Starting training...")
+            model.learn(total_timesteps=2000000,
+                        callback=eval_callback)
+            logger.info(
+                f"Trial {trial.number}: Training completed successfully")
+        except Exception as e:
+            logger.error(f"Trial {trial.number}: Training failed")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            # Additional context for training errors
+            try:
+                logger.error(
+                    f"Training environment state: action_space={train_env.action_space}, observation_space={train_env.observation_space}")
+                logger.error(f"Model parameters: {model.get_parameters()}")
+            except:
+                logger.error("Could not retrieve additional context")
+            raise
 
         # Get final evaluation score
         if len(eval_callback.evaluations_results) > 0:
@@ -364,9 +544,12 @@ def objective(trial):
             # Keep the trial directory for now
             pass
 
+        logger.info(
+            f"Trial {trial.number}: Completed with reward: {final_mean_reward}")
         return final_mean_reward
 
     except optuna.TrialPruned:
+        logger.info(f"Trial {trial.number}: Pruned")
         # Clean up on pruning
         if train_env:
             train_env.close()
@@ -376,12 +559,37 @@ def objective(trial):
             shutil.rmtree(trial_dir, ignore_errors=True)
         raise
     except Exception as e:
-        logger.error(f"Trial {trial.number} failed: {e}")
+        logger.error(f"Trial {trial.number} failed with error: {str(e)}")
+        logger.error(f"Trial {trial.number} error type: {type(e).__name__}")
+        logger.error(
+            f"Full traceback for trial {trial.number}:\n{traceback.format_exc()}")
+
+        # Additional debugging information
+        try:
+            logger.error(f"Trial {trial.number} parameters: {trial.params}")
+            if train_env:
+                logger.error(
+                    f"Training env action_space: {train_env.action_space}")
+                logger.error(
+                    f"Training env observation_space: {train_env.observation_space}")
+            if eval_env:
+                logger.error(f"Eval env action_space: {eval_env.action_space}")
+                logger.error(
+                    f"Eval env observation_space: {eval_env.observation_space}")
+        except Exception as debug_e:
+            logger.error(f"Could not get additional debug info: {debug_e}")
+
         # Clean up on error
         if train_env:
-            train_env.close()
+            try:
+                train_env.close()
+            except:
+                pass
         if eval_env:
-            eval_env.close()
+            try:
+                eval_env.close()
+            except:
+                pass
         if trial_dir:
             shutil.rmtree(trial_dir, ignore_errors=True)
         return -np.inf
