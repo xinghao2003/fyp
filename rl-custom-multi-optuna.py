@@ -14,12 +14,8 @@ from optuna.samplers import TPESampler
 import logging
 import shutil
 
-# Import different reward functions
-from reward import (
-    reward_function_5_less_risk_averse as reward_func_1,
-    reward_function_5_aggressive as reward_func_2,
-    reward_function_5 as reward_func_3,
-)
+# Import base reward function
+from reward import reward_function_5
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -132,18 +128,33 @@ def create_preprocess_function(feature_config):
     return preprocess
 
 
-def get_reward_function(trial):
-    """Select reward function based on trial suggestion"""
-    reward_choice = trial.suggest_categorical(
-        'reward_function', ['risk_averse', 'aggressive', 'balanced'])
+def create_tunable_reward_function(trial):
+    """Create a reward function with tunable weights based on trial suggestions"""
 
-    reward_functions = {
-        'risk_averse': reward_func_1,
-        'aggressive': reward_func_2,
-        'balanced': reward_func_3,
-    }
+    # Suggest weight parameters for different reward components
+    w_return = trial.suggest_float('w_return', 0.5, 2.0)
+    w_risk = trial.suggest_float('w_risk', 0.0, 1.0)
+    w_drawdown = trial.suggest_float('w_drawdown', 0.0, 1.0)
+    w_cost = trial.suggest_float('w_cost', 0.0, 0.01)
+    w_alpha = trial.suggest_float('w_alpha', 0.0, 1.0)
 
-    return reward_functions[reward_choice]
+    # Other reward function parameters
+    window = trial.suggest_int('reward_window', 10, 50)
+    clip_value = trial.suggest_float('clip_value', 0.5, 2.0)
+
+    def tunable_reward_function(history):
+        return reward_function_5(
+            history=history,
+            window=window,
+            w_return=w_return,
+            w_risk=w_risk,
+            w_drawdown=w_drawdown,
+            w_cost=w_cost,
+            w_alpha=w_alpha,
+            clip_value=clip_value
+        )
+
+    return tunable_reward_function
 
 
 def objective(trial):
@@ -216,14 +227,25 @@ def objective(trial):
         # Create preprocessing function with selected features
         preprocess_func = create_preprocess_function(feature_config)
 
-        # Log selected features for this trial
+        # Log selected features and reward weights for this trial
         selected_features = [feature for feature, enabled in feature_config.items()
                              if enabled and not feature.endswith('_window')]
+        reward_weights = {
+            'w_return': trial.params.get('w_return'),
+            'w_risk': trial.params.get('w_risk'),
+            'w_drawdown': trial.params.get('w_drawdown'),
+            'w_cost': trial.params.get('w_cost'),
+            'w_alpha': trial.params.get('w_alpha'),
+            'reward_window': trial.params.get('reward_window'),
+            'clip_value': trial.params.get('clip_value')
+        }
         logger.info(
             f"Trial {trial.number}: Selected features: {selected_features}")
+        logger.info(
+            f"Trial {trial.number}: Reward weights: {reward_weights}")
 
-        # Get reward function
-        custom_reward_function = get_reward_function(trial)
+        # Get reward function with tunable weights
+        custom_reward_function = create_tunable_reward_function(trial)
 
         # Create trial-specific directory
         trial_dir = f"./optuna_trials/{RUN_ID}/trial_{trial.number}"
@@ -387,9 +409,9 @@ def run_optuna_optimization():
     print("\nTraining final model with best parameters...")
     best_trial = study.best_trial
 
-    # Get best reward function
+    # Get best reward function with optimized weights
     temp_trial = optuna.trial.FixedTrial(best_trial.params)
-    best_reward_function = get_reward_function(temp_trial)
+    best_reward_function = create_tunable_reward_function(temp_trial)
 
     # Create best feature configuration
     best_feature_config = {
@@ -482,11 +504,24 @@ def run_optuna_optimization():
 
     final_model.save(f"./model/{RUN_ID}/final_optimized_model")
 
-    # Save best parameters including feature configuration
+    # Save best parameters including feature configuration and reward weights
     import json
+
+    # Extract reward weights from best parameters
+    reward_weights = {
+        'w_return': best_trial.params.get('w_return'),
+        'w_risk': best_trial.params.get('w_risk'),
+        'w_drawdown': best_trial.params.get('w_drawdown'),
+        'w_cost': best_trial.params.get('w_cost'),
+        'w_alpha': best_trial.params.get('w_alpha'),
+        'reward_window': best_trial.params.get('reward_window'),
+        'clip_value': best_trial.params.get('clip_value')
+    }
+
     complete_config = {
         'hyperparameters': best_trial.params,
         'feature_config': best_feature_config,
+        'reward_weights': reward_weights,
         'run_id': RUN_ID,
         'study_name': study.study_name,
         'best_value': study.best_value,
@@ -500,11 +535,19 @@ def run_optuna_optimization():
     with open(f"./model/{RUN_ID}/feature_config.json", 'w') as f:
         json.dump(best_feature_config, f, indent=2)
 
+    # Also save reward weights separately for easy access
+    with open(f"./model/{RUN_ID}/reward_weights.json", 'w') as f:
+        json.dump(reward_weights, f, indent=2)
+
     print(f"Optimization complete! Best model saved with ID: {RUN_ID}")
     print(f"Best feature configuration:")
     for feature, enabled in best_feature_config.items():
         if enabled and not feature.endswith('_window'):
             print(f"  - {feature}: {enabled}")
+
+    print(f"\nBest reward weights:")
+    for weight_name, weight_value in reward_weights.items():
+        print(f"  - {weight_name}: {weight_value}")
 
     return study
 
