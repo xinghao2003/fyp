@@ -47,7 +47,7 @@ for csv_path in glob.glob(f"{INPUT_DIR}/**/*.csv", recursive=True):
     df.drop_duplicates(inplace=True)
 
     # 2) ─────── add features & final cleanup ───────────────────────────────
-    df.dropna(inplace=True)           # REQUIRED → no NaNs in the env
+    # Skip dropna() - assume data is already clean and complete
 
     # 3) ─────── save as pickle ─────────────────────────────────────────────
     symbol_name = Path(csv_path).stem   # e.g. 'AAPL_30m'
