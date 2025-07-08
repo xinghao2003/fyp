@@ -39,14 +39,21 @@ for csv_path in glob.glob(f"{INPUT_DIR}/**/*.csv", recursive=True):
     df["date"] = pd.to_datetime(df["date"], utc=True).dt.tz_convert(None)
 
     # enforce dtypes
-    numeric_cols = ["open", "high", "low", "close", "volume"]
-    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+    # numeric_cols = ["open", "high", "low", "close", "volume"]
+    # df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
 
     df.set_index("date", drop=True, inplace=True)
     df.sort_index(inplace=True)
     df.drop_duplicates(inplace=True)
 
     # 2) ─────── add features & final cleanup ───────────────────────────────
+    # Tell which dataset has na
+    if df.isnull().values.any():
+        print(f"Warning: {csv_path} contains NaN values. "
+              "Skipping dropna() - assume data is already clean and complete.")
+        # tell me nan column
+        nan_columns = df.columns[df.isnull().any()].tolist()
+        print(f"  Columns with NaN values: {', '.join(nan_columns)}")
     # Skip dropna() - assume data is already clean and complete
 
     # 3) ─────── save as pickle ─────────────────────────────────────────────
