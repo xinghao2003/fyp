@@ -10,3 +10,5 @@ eval_logs/
 runs/
 optuna_studies/
 optuna_trials/
+*log
+*todo
