@@ -422,28 +422,37 @@ def create_tunable_reward_function(trial):
     return tunable_reward_function
 
 
-def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, seed=None):
+def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42):
     """
     Evaluate the trained model using Sharpe ratio as a consistent metric.
     This function evaluates the actual trading performance independent of the reward function.
+
+    IMPORTANT: All trials use the SAME sequence of episodes for fair comparison.
+    Each trial evaluates on identical datasets/starting points to ensure that
+    performance differences are due to hyperparameters, not random evaluation conditions.
 
     Args:
         model: Trained RL model
         eval_env: Evaluation environment
         n_episodes: Number of episodes to evaluate
-        seed: Random seed for reproducibility
+        base_seed: Base seed for consistent evaluation across all trials
 
     Returns:
         float: Sharpe ratio of the portfolio returns
     """
-    if seed is not None:
-        eval_env.reset(seed=seed)
-
     portfolio_values = []
     episode_returns = []
 
     for episode in range(n_episodes):
-        obs, _ = eval_env.reset()
+        # Use SAME seed sequence for ALL trials - ensures fair comparison
+        # All trials evaluate on identical episodes:
+        # - Trial A, Episode 0: base_seed + 0
+        # - Trial A, Episode 1: base_seed + 1
+        # - Trial B, Episode 0: base_seed + 0  (SAME as Trial A)
+        # - Trial B, Episode 1: base_seed + 1  (SAME as Trial A)
+        # This guarantees fair comparison across trials
+        episode_seed = base_seed + episode
+        obs, _ = eval_env.reset(seed=episode_seed)
         done = False
         initial_value = None
 
@@ -489,11 +498,12 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, seed=None):
 class OptunaPruningCallback(BaseCallback):
     """Custom callback for Optuna pruning during training"""
 
-    def __init__(self, trial: optuna.Trial, eval_env, model, verbose: int = 0):
+    def __init__(self, trial: optuna.Trial, eval_env, model, base_seed=42, verbose: int = 0):
         super().__init__(verbose)
         self.trial = trial
         self.eval_env = eval_env
         self.model = model
+        self.base_seed = base_seed
 
     def _on_step(self) -> bool:
         # This callback is called after each evaluation by EvalCallback
@@ -503,11 +513,12 @@ class OptunaPruningCallback(BaseCallback):
             if self.parent.n_calls % 3 == 0:  # Every 3rd evaluation
                 try:
                     # Quick Sharpe ratio evaluation for pruning (fewer episodes)
+                    # Use consistent base seed for fair comparison across all trials
                     sharpe_ratio = evaluate_sharpe_ratio(
                         model=self.model,
                         eval_env=self.eval_env,
                         n_episodes=3,  # Fewer episodes for faster pruning evaluation
-                        seed=42
+                        base_seed=self.base_seed  # Same episodes for all trials
                     )
 
                     # Optuna expects steps to be monotonically increasing
@@ -726,7 +737,8 @@ def objective(trial):
         pruning_callback = OptunaPruningCallback(
             trial=trial,
             eval_env=eval_env,
-            model=model
+            model=model,
+            base_seed=SEED
         )
 
         # Chain the callbacks
@@ -769,7 +781,7 @@ def objective(trial):
                 model=model,
                 eval_env=eval_env,
                 n_episodes=10,
-                seed=SEED + trial.number
+                base_seed=SEED  # Same episodes for all trials - fair comparison
             )
             logger.info(
                 f"Trial {trial.number}: Sharpe ratio: {sharpe_ratio:.4f}")
