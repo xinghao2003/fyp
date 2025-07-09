@@ -71,7 +71,9 @@ def create_preprocess_function(feature_config):
             logger.debug(
                 f"DataFrame index range: {df.index.min()} to {df.index.max()}")
             logger.debug(f"DataFrame head:\n{df.head()}")
-            logger.debug(f"DataFrame info:\n{df.info()}")
+
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"DataFrame info:\n{df.info()}")
 
             # Check for empty DataFrame
             if df.empty:
