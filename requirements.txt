@@ -8,3 +8,4 @@ sb3-contrib
 optuna
 stockstats
 yfinance
+optuna-dashboard

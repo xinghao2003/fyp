@@ -1,3 +1,4 @@
+
 import gym_trading_env
 import gymnasium as gym
 import pandas as pd
@@ -421,32 +422,121 @@ def create_tunable_reward_function(trial):
     return tunable_reward_function
 
 
+def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, seed=None):
+    """
+    Evaluate the trained model using Sharpe ratio as a consistent metric.
+    This function evaluates the actual trading performance independent of the reward function.
+
+    Args:
+        model: Trained RL model
+        eval_env: Evaluation environment
+        n_episodes: Number of episodes to evaluate
+        seed: Random seed for reproducibility
+
+    Returns:
+        float: Sharpe ratio of the portfolio returns
+    """
+    if seed is not None:
+        eval_env.reset(seed=seed)
+
+    portfolio_values = []
+    episode_returns = []
+
+    for episode in range(n_episodes):
+        obs, _ = eval_env.reset()
+        done = False
+        initial_value = None
+
+        while not done:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = eval_env.step(action)
+            done = terminated or truncated
+
+            # Track portfolio valuation
+            if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
+                current_value = eval_env.unwrapped.historical_info["portfolio_valuation", -1]
+                if initial_value is None:
+                    initial_value = current_value
+                portfolio_values.append(current_value)
+
+        # Calculate episode return
+        if initial_value is not None and len(portfolio_values) > 0:
+            final_value = portfolio_values[-1]
+            episode_return = (final_value - initial_value) / initial_value
+            episode_returns.append(episode_return)
+
+    # Calculate Sharpe ratio from episode returns
+    if len(episode_returns) > 1:
+        mean_return = np.mean(episode_returns)
+        std_return = np.std(episode_returns)
+
+        # Avoid division by zero
+        if std_return > 1e-8:
+            sharpe_ratio = mean_return / std_return
+        else:
+            # If no volatility, return mean return (could be very good or very bad)
+            sharpe_ratio = mean_return
+    else:
+        # Not enough episodes to calculate meaningful Sharpe ratio
+        sharpe_ratio = 0.0
+
+    logger.info(f"Evaluation results: Mean return: {np.mean(episode_returns):.4f}, "
+                f"Std return: {np.std(episode_returns):.4f}, Sharpe ratio: {sharpe_ratio:.4f}")
+
+    return sharpe_ratio
+
+
 class OptunaPruningCallback(BaseCallback):
     """Custom callback for Optuna pruning during training"""
 
-    def __init__(self, trial: optuna.Trial, verbose: int = 0):
+    def __init__(self, trial: optuna.Trial, eval_env, model, verbose: int = 0):
         super().__init__(verbose)
         self.trial = trial
+        self.eval_env = eval_env
+        self.model = model
 
     def _on_step(self) -> bool:
-        # This callback is called after each evaluation by EvalCallback,
-        # so we can access the last mean reward.
-        assert self.parent is not None, "OptunaPruningCallback must be used with an EvalCallback"
-        last_mean_reward = self.parent.last_mean_reward
+        # This callback is called after each evaluation by EvalCallback
+        # We'll evaluate using Sharpe ratio for pruning decisions
+        if hasattr(self.parent, 'n_calls') and self.parent.n_calls > 0:
+            # Only evaluate for pruning every few evaluations to save computation
+            if self.parent.n_calls % 3 == 0:  # Every 3rd evaluation
+                try:
+                    # Quick Sharpe ratio evaluation for pruning (fewer episodes)
+                    sharpe_ratio = evaluate_sharpe_ratio(
+                        model=self.model,
+                        eval_env=self.eval_env,
+                        n_episodes=3,  # Fewer episodes for faster pruning evaluation
+                        seed=42
+                    )
 
-        # Optuna expects steps to be monotonically increasing
-        step = self.parent.n_calls
+                    # Optuna expects steps to be monotonically increasing
+                    step = self.parent.n_calls
 
-        self.trial.report(last_mean_reward, step)
+                    self.trial.report(sharpe_ratio, step)
 
-        if self.trial.should_prune():
-            raise optuna.TrialPruned()
+                    if self.trial.should_prune():
+                        raise optuna.TrialPruned()
+
+                except Exception as e:
+                    # If evaluation fails, don't prune (continue training)
+                    logger.warning(f"Pruning evaluation failed: {e}")
+                    pass
 
         return True
 
 
 def objective(trial):
-    """Optuna objective function for hyperparameter optimization"""
+    """
+    Optuna objective function for hyperparameter optimization.
+
+    IMPORTANT: This function evaluates trials using Sharpe ratio instead of mean reward
+    to avoid the circular dependency problem where the reward function weights are being
+    optimized while simultaneously being used as the evaluation metric. 
+
+    The Sharpe ratio provides a consistent, meaningful metric across all trials that
+    measures risk-adjusted returns independent of the reward function formulation.
+    """
     train_env = None
     eval_env = None
     trial_dir = None
@@ -632,8 +722,12 @@ def objective(trial):
         stop_callback = StopTrainingOnNoModelImprovement(
             max_no_improvement_evals=5, min_evals=3, verbose=1)
 
-        # Create pruning callback
-        pruning_callback = OptunaPruningCallback(trial)
+        # Create pruning callback with Sharpe ratio evaluation
+        pruning_callback = OptunaPruningCallback(
+            trial=trial,
+            eval_env=eval_env,
+            model=model
+        )
 
         # Chain the callbacks
         callback_list = CallbackList([stop_callback, pruning_callback])
@@ -667,11 +761,23 @@ def objective(trial):
                 logger.error("Could not retrieve additional context")
             raise
 
-        # Get final evaluation score
-        if len(eval_callback.evaluations_results) > 0:
-            final_mean_reward = np.mean(eval_callback.evaluations_results[-1])
-        else:
-            final_mean_reward = -np.inf
+        # Evaluate using Sharpe ratio instead of mean reward
+        # This provides a consistent, meaningful metric across all trials
+        logger.info(f"Trial {trial.number}: Evaluating with Sharpe ratio...")
+        try:
+            sharpe_ratio = evaluate_sharpe_ratio(
+                model=model,
+                eval_env=eval_env,
+                n_episodes=10,
+                seed=SEED + trial.number
+            )
+            logger.info(
+                f"Trial {trial.number}: Sharpe ratio: {sharpe_ratio:.4f}")
+        except Exception as e:
+            logger.error(
+                f"Trial {trial.number}: Sharpe ratio evaluation failed: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            sharpe_ratio = -np.inf
 
         # Clean up environments
         if train_env:
@@ -682,7 +788,7 @@ def objective(trial):
         # Clean up trial directory if not the best (with safe best_value access)
         try:
             current_best = trial.study.best_value
-            if final_mean_reward < current_best:
+            if sharpe_ratio < current_best:
                 shutil.rmtree(trial_dir, ignore_errors=True)
         except (AttributeError, ValueError):
             # No best value exists yet or other database issue
@@ -690,8 +796,8 @@ def objective(trial):
             pass
 
         logger.info(
-            f"Trial {trial.number}: Completed with reward: {final_mean_reward}")
-        return final_mean_reward
+            f"Trial {trial.number}: Completed with Sharpe ratio: {sharpe_ratio:.4f}")
+        return sharpe_ratio
 
     except optuna.TrialPruned:
         logger.info(f"Trial {trial.number}: Pruned")
@@ -779,6 +885,7 @@ def run_optuna_optimization():
 
     print(f"Starting Optuna optimization with study: {study.study_name}")
     print("Pruning enabled: Early stopping of unpromising trials")
+    print("Evaluation metric: Sharpe ratio (consistent across all trials)")
 
     # Optimize with pruning
     study.optimize(objective, n_trials=50, timeout=3600*12)  # 12 hours timeout
@@ -786,7 +893,7 @@ def run_optuna_optimization():
     # Print results
     print("\nOptimization completed!")
     print(f"Best trial: {study.best_trial.number}")
-    print(f"Best value: {study.best_value}")
+    print(f"Best Sharpe ratio: {study.best_value:.4f}")
     print("Best params:")
     for key, value in study.best_params.items():
         print(f"  {key}: {value}")
@@ -917,8 +1024,9 @@ def run_optuna_optimization():
         'reward_weights': reward_weights,
         'run_id': RUN_ID,
         'study_name': study.study_name,
-        'best_value': study.best_value,
-        'best_trial_number': best_trial.number
+        'best_sharpe_ratio': study.best_value,
+        'best_trial_number': best_trial.number,
+        'evaluation_metric': 'sharpe_ratio'
     }
 
     with open(f"./model/{RUN_ID}/best_params.json", 'w') as f:
