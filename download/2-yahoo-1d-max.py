@@ -24,7 +24,7 @@ def download_stock_data(symbols=["AAPL"], period="1y", interval="1h", output_dir
 
     # Set output directory
     if output_dir is None:
-        output_dir = os.path.dirname(__file__)
+        output_dir = os.path.join(os.path.dirname(__file__), "1d-max")
 
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
@@ -81,8 +81,12 @@ def download_stock_data(symbols=["AAPL"], period="1y", interval="1h", output_dir
             }
             data.rename(columns=rename_dict, inplace=True)
 
+            # Add symbol column
+            data['symbol'] = symbol
+
             # Select only needed columns (check if they exist first)
-            required_cols = ['date', 'open', 'high', 'low', 'close', 'volume']
+            required_cols = ['date', 'open', 'high',
+                             'low', 'close', 'volume', 'symbol']
             available_cols = [
                 col for col in required_cols if col in data.columns]
             data = data[available_cols]
@@ -180,7 +184,7 @@ if __name__ == "__main__":
     # Download all symbols
     results = download_stock_data(
         symbols=all_symbols,
-        period="5y",
+        period="max",
         interval="1d"
     )
 

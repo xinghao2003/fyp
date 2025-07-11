@@ -39,11 +39,12 @@ def process_csv_files(folder_path):
             # Convert date column to datetime with UTC to handle mixed timezones
             df['date'] = pd.to_datetime(df['date'], utc=True)
 
-            # Create datetime object for comparison
-            cutoff_date = pd.to_datetime('2005-01-01', utc=True)
+            # Create datetime objects for comparison
+            cutoff_start = pd.to_datetime('2005-01-01', utc=True)
+            cutoff_end = pd.to_datetime('2025-06-30', utc=True)
 
-            # Filter records from 2005 onwards
-            df_filtered = df[df['date'] >= cutoff_date]
+            # Filter records from 2005-01-01 to 2025-06-30 (inclusive)
+            df_filtered = df[(df['date'] >= cutoff_start) & (df['date'] <= cutoff_end)]
 
             filtered_count = len(df_filtered)
             removed_count = original_count - filtered_count
