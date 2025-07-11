@@ -99,14 +99,14 @@ def reward_function_5(
 # Generate unique timestamp-based ID for this run
 RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 print(f"Please record this ID for tracking: {RUN_ID}")
-
 # Configure logging with more detailed format
+os.makedirs('optuna_logs', exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f'debug_{RUN_ID}.log')
+        logging.FileHandler(f'optuna_logs/debug_{RUN_ID}.log')
     ]
 )
 logger = logging.getLogger(__name__)
@@ -422,7 +422,7 @@ def create_tunable_reward_function(trial):
     return tunable_reward_function
 
 
-def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42):
+def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_risk_free_rate=0.0404):
     """
     Evaluate the trained model using Sharpe ratio as a consistent metric.
     This function evaluates the actual trading performance independent of the reward function.
@@ -431,17 +431,21 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42):
     Each trial evaluates on identical datasets/starting points to ensure that
     performance differences are due to hyperparameters, not random evaluation conditions.
 
+    NOTICE: Current implementation has some issue on statistical properties of Sharpe ratio.
+
     Args:
         model: Trained RL model
         eval_env: Evaluation environment
         n_episodes: Number of episodes to evaluate
         base_seed: Base seed for consistent evaluation across all trials
+        annual_risk_free_rate (float): The annualized risk-free rate (e.g., 0.0404 for 4.04%, taken from annual performance of US 1-year Treasury).
 
     Returns:
         float: Sharpe ratio of the portfolio returns
     """
     portfolio_values = []
     episode_returns = []
+    episode_excess_returns = []
 
     for episode in range(n_episodes):
         # Use SAME seed sequence for ALL trials - ensures fair comparison
@@ -456,6 +460,9 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42):
         done = False
         initial_value = None
 
+        # Clear portfolio values for the new episode
+        portfolio_values.clear()
+
         while not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, info = eval_env.step(action)
@@ -464,32 +471,55 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42):
             # Track portfolio valuation
             if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
                 current_value = eval_env.unwrapped.historical_info["portfolio_valuation", -1]
+                logger.debug(f"Episode {episode}, Step: {len(portfolio_values)}, "
+                             f"Current portfolio value: {current_value:.2f}")
                 if initial_value is None:
                     initial_value = current_value
                 portfolio_values.append(current_value)
 
-        # Calculate episode return
-        if initial_value is not None and len(portfolio_values) > 0:
+        # Calculate episode return and risk-adjusted return
+        if initial_value is not None and len(portfolio_values) > 1:
             final_value = portfolio_values[-1]
             episode_return = (final_value - initial_value) / initial_value
             episode_returns.append(episode_return)
 
+            # Calculate episode duration in years to adjust the risk-free rate
+            history = eval_env.unwrapped.historical_info
+            start_date = pd.to_datetime(history['date', 0])
+            end_date = pd.to_datetime(history['date', -1])
+            duration_in_days = (end_date - start_date).days
+
+            # Avoid division by zero if episode is less than a day
+            if duration_in_days > 0:
+                duration_in_years = duration_in_days / 365.25
+                # De-annualize the risk-free rate for the episode's duration
+                episode_risk_free_return = (
+                    1 + annual_risk_free_rate)**duration_in_years - 1
+            else:
+                episode_risk_free_return = 0.0
+
+            # Calculate excess return over the risk-free rate
+            excess_return = episode_return - episode_risk_free_return
+            episode_excess_returns.append(excess_return)
+
     # Calculate Sharpe ratio from episode returns
     if len(episode_returns) > 1:
-        mean_return = np.mean(episode_returns)
+        # Use mean of excess returns
+        mean_excess_return = np.mean(episode_excess_returns)
+        # Use std of portfolio returns (standard definition of Sharpe Ratio)
         std_return = np.std(episode_returns)
 
         # Avoid division by zero
         if std_return > 1e-8:
-            sharpe_ratio = mean_return / std_return
+            sharpe_ratio = mean_excess_return / std_return
         else:
-            # If no volatility, return mean return (could be very good or very bad)
-            sharpe_ratio = mean_return
+            # If no volatility, return mean excess return
+            sharpe_ratio = mean_excess_return
     else:
         # Not enough episodes to calculate meaningful Sharpe ratio
         sharpe_ratio = 0.0
 
-    logger.info(f"Evaluation results: Mean return: {np.mean(episode_returns):.4f}, "
+    logger.info(f"Evaluation results: Mean excess return: {np.mean(episode_excess_returns):.4f}, "
                 f"Std return: {np.std(episode_returns):.4f}, Sharpe ratio: {sharpe_ratio:.4f}")
 
     return sharpe_ratio
