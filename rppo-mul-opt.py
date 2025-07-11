@@ -95,6 +95,64 @@ def reward_function_5(
     return reward
 
 
+# Helper functions for metrics
+def calculate_max_drawdown(history):
+    portfolio_valuations = np.asarray(history['portfolio_valuation'], dtype=np.float64)
+    if len(portfolio_valuations) < 2:
+        return 0.0
+    peaks = np.maximum.accumulate(portfolio_valuations)
+    drawdowns = (peaks - portfolio_valuations) / (peaks + 1e-8)
+    return np.max(drawdowns)
+
+def calculate_annualized_return(history):
+    portfolio_valuations = np.asarray(history['portfolio_valuation'], dtype=np.float64)
+    if len(portfolio_valuations) < 2:
+        return 0.0
+    
+    total_return = (portfolio_valuations[-1] - portfolio_valuations[0]) / portfolio_valuations[0]
+    
+    start_date = pd.to_datetime(history['date', 0])
+    end_date = pd.to_datetime(history['date', -1])
+    duration_in_days = (end_date - start_date).days
+    
+    if duration_in_days <= 0:
+        return 0.0
+        
+    duration_in_years = duration_in_days / 365.25
+    annualized_return = (1 + total_return) ** (1 / duration_in_years) - 1
+    return annualized_return
+
+def calculate_sharpe_ratio(history, risk_free_rate=0.0404):
+    portfolio_valuations = np.asarray(history['portfolio_valuation'], dtype=np.float64)
+    if len(portfolio_valuations) < 2:
+        return 0.0
+    
+    returns = np.diff(portfolio_valuations) / portfolio_valuations[:-1]
+    
+    start_date = pd.to_datetime(history['date', 0])
+    end_date = pd.to_datetime(history['date', -1])
+    duration_in_days = (end_date - start_date).days
+    
+    if duration_in_days <= 0:
+        return 0.0
+        
+    # Assuming daily data for simplicity in calculating daily risk-free rate
+    daily_risk_free_rate = (1 + risk_free_rate)**(1/365.25) - 1
+    
+    excess_returns = returns - daily_risk_free_rate
+    
+    mean_excess_return = np.mean(excess_returns)
+    std_dev_returns = np.std(returns)
+    
+    if std_dev_returns < 1e-8:
+        return 0.0
+        
+    # Annualize Sharpe Ratio
+    sharpe_ratio = mean_excess_return / std_dev_returns
+    annualized_sharpe = sharpe_ratio * np.sqrt(365.25) # Assuming daily returns
+    return annualized_sharpe
+
+
 # Generate unique timestamp-based ID for this run
 RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 print(f"Please record this ID for tracking: {RUN_ID}")
@@ -146,7 +204,6 @@ def create_preprocess_function(feature_config):
             logger.debug(f"Available columns: {df.columns.tolist()}")
             logger.debug(
                 f"DataFrame index range: {df.index.min()} to {df.index.max()}")
-            logger.debug(f"DataFrame head:\n{df.head()}")
 
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"DataFrame info:\n{df.info()}")
@@ -157,7 +214,9 @@ def create_preprocess_function(feature_config):
                 raise ValueError("Input DataFrame is empty")
 
             # Check for NaN values
-            nan_counts = df.isnull().sum()
+            used_columns = ['open', 'close', 'high', 'low', 'volume', 'macd', 'rsi', 'close_10_sma',
+                            'close_10_ema', 'adx', 'boll_ub', 'boll_lb', 'boll', 'kdjk', 'kdjd', 'kdjj', 'atr']
+            nan_counts = df[used_columns].isnull().sum()
             if nan_counts.any():
                 logger.warning(
                     f"NaN values found in columns: {nan_counts[nan_counts > 0].to_dict()}")
@@ -430,7 +489,8 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
     Each trial evaluates on identical datasets/starting points to ensure that
     performance differences are due to hyperparameters, not random evaluation conditions.
 
-    NOTICE: Current implementation has some issue on statistical properties of Sharpe ratio.
+    NOTICE: Current implementation has some issue on statistical properties of Sharpe ratio. But with the fixed ranges of validation dataset,
+    the Sharpe ratio should be calculated in a mostly consistent manner across trials.
 
     Args:
         model: Trained RL model
@@ -687,6 +747,12 @@ def objective(trial):
         borrow_interest_rate = trial.suggest_float(
             'borrow_interest_rate', 0.0001, 0.0005)
 
+        logger.info(f"Trial {trial.number}: Suggested hyperparameters: "
+                    f"learning_rate={learning_rate}, n_steps={n_steps}, batch_size={batch_size}, "
+                    f"n_epochs={n_epochs}, gamma={gamma}, gae_lambda={gae_lambda}, "
+                    f"clip_range={clip_range}, ent_coef={ent_coef}, vf_coef={vf_coef}, "
+                    f"windows={windows}, trading_fees={trading_fees}, borrow_interest_rate={borrow_interest_rate}")
+
         # Feature selection hyperparameters
         # Note: 'close' price is always included as it's essential for trading
         # Other features are optional and will be optimized by Optuna
@@ -770,6 +836,17 @@ def objective(trial):
                                  borrow_interest_rate=borrow_interest_rate,
                                  )
 
+            train_env.add_metric(
+                'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+            train_env.add_metric('Position Changes', lambda history: np.sum(
+                np.diff(history['position']) != 0))
+            train_env.add_metric(
+                'Episode Length', lambda history: len(history['position']))
+            train_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+            train_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+            train_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+            
+
             logger.info(
                 f"Trial {trial.number}: Resetting training environment...")
             obs, info = train_env.reset(seed=SEED + trial.number)
@@ -797,6 +874,16 @@ def objective(trial):
                                 trading_fees=trading_fees,
                                 borrow_interest_rate=borrow_interest_rate,
                                 )
+
+            eval_env.add_metric(
+                'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+            eval_env.add_metric('Position Changes', lambda history: np.sum(
+                np.diff(history['position']) != 0))
+            eval_env.add_metric(
+                'Episode Length', lambda history: len(history['position']))
+            eval_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+            eval_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+            eval_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
             logger.info(
                 f"Trial {trial.number}: Resetting evaluation environment...")
@@ -841,6 +928,8 @@ def objective(trial):
                 eval_env.close()
             raise
 
+        trial_total_timesteps = 2000000
+
         stop_callback = StopTrainingOnNoModelImprovement(
             max_no_improvement_evals=5, min_evals=3, verbose=1)
 
@@ -858,7 +947,8 @@ def objective(trial):
         eval_callback = EvalCallback(eval_env,
                                      best_model_save_path=trial_dir,
                                      log_path=trial_dir,
-                                     eval_freq=50000,
+                                     # Evaluate every 2.5% of total timesteps
+                                     eval_freq=trial_total_timesteps * 0.025,
                                      n_eval_episodes=5,
                                      deterministic=True,
                                      render=False,
@@ -868,7 +958,7 @@ def objective(trial):
         # Train the model with pruning enabled
         try:
             logger.info(f"Trial {trial.number}: Starting training...")
-            model.learn(total_timesteps=2000000,
+            model.learn(total_timesteps=trial_total_timesteps,
                         callback=eval_callback)
             logger.info(
                 f"Trial {trial.number}: Training completed successfully")
@@ -981,6 +1071,7 @@ def run_optuna_optimization():
     try:
         study = optuna.create_study(
             direction='maximize',
+            # TODO: Possibly use RUN_ID as seed, introduce randomness
             sampler=TPESampler(seed=SEED),
             pruner=MedianPruner(
                 n_startup_trials=10,    # Increased for better baseline
@@ -1011,7 +1102,7 @@ def run_optuna_optimization():
     print("Evaluation metric: Sharpe ratio (consistent across all trials)")
 
     # Optimize with pruning
-    study.optimize(objective, n_trials=50, timeout=3600*12)  # 12 hours timeout
+    study.optimize(objective, n_trials=1, timeout=3600*12)  # 12 hours timeout
 
     # Print results
     print("\nOptimization completed!")
@@ -1073,6 +1164,16 @@ def run_optuna_optimization():
                                borrow_interest_rate=best_trial.params['borrow_interest_rate'],
                                )
 
+    final_train_env.add_metric(
+        'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+    final_train_env.add_metric('Position Changes', lambda history: np.sum(
+        np.diff(history['position']) != 0))
+    final_train_env.add_metric(
+        'Episode Length', lambda history: len(history['position']))
+    final_train_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+    final_train_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+    final_train_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+
     final_eval_env = gym.make('MultiDatasetTradingEnv',
                               dataset_dir='dataset/1d-2005/val/*.pkl',
                               reward_function=best_reward_function,
@@ -1082,6 +1183,16 @@ def run_optuna_optimization():
                               trading_fees=best_trial.params['trading_fees'],
                               borrow_interest_rate=best_trial.params['borrow_interest_rate'],
                               )
+
+    final_eval_env.add_metric(
+        'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+    final_eval_env.add_metric('Position Changes', lambda history: np.sum(
+        np.diff(history['position']) != 0))
+    final_eval_env.add_metric(
+        'Episode Length', lambda history: len(history['position']))
+    final_eval_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+    final_eval_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+    final_eval_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
     final_train_env.reset(seed=SEED)
     final_eval_env.reset(seed=SEED)

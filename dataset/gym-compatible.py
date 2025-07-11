@@ -48,11 +48,14 @@ for csv_path in glob.glob(f"{INPUT_DIR}/**/*.csv", recursive=True):
 
     # 2) ─────── add features & final cleanup ───────────────────────────────
     # Tell which dataset has na
-    if df.isnull().values.any():
+    used_columns = ['open', 'close', 'high', 'low', 'volume', 'macd', 'rsi', 'close_10_sma',
+                    'close_10_ema', 'adx', 'boll_ub', 'boll_lb', 'boll', 'kdjk', 'kdjd', 'kdjj', 'atr']
+    if df[used_columns].isnull().values.any():
         print(f"Warning: {csv_path} contains NaN values. "
               "Skipping dropna() - assume data is already clean and complete.")
         # tell me nan column
-        nan_columns = df.columns[df.isnull().any()].tolist()
+        nan_columns = df[used_columns].columns[df[used_columns].isnull(
+        ).any()].tolist()
         print(f"  Columns with NaN values: {', '.join(nan_columns)}")
     # Skip dropna() - assume data is already clean and complete
 
