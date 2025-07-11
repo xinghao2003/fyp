@@ -1,4 +1,3 @@
-
 import gym_trading_env
 import gymnasium as gym
 import pandas as pd
@@ -456,26 +455,84 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
         # - Trial B, Episode 1: base_seed + 1  (SAME as Trial A)
         # This guarantees fair comparison across trials
         episode_seed = base_seed + episode
+        logger.info(f"Starting episode {episode} with seed {episode_seed}")
+
         obs, _ = eval_env.reset(seed=episode_seed)
         done = False
         initial_value = None
+        step_count = 0
 
         # Clear portfolio values for the new episode
         portfolio_values.clear()
+
+        # Get initial episode information after reset
+        try:
+            if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
+                history = eval_env.unwrapped.historical_info
+
+                # Get symbol information
+                symbol = "Unknown"
+                if 'data_symbol' in history.columns:
+                    symbol = history['data_symbol', -
+                                     1] if len(history) > 0 else "Unknown"
+
+                # Get start date
+                start_date = "Unknown"
+                if 'date' in history.columns and len(history) > 0:
+                    start_date = pd.to_datetime(
+                        history['date', -1]).strftime('%Y-%m-%d')
+
+                logger.info(
+                    f"Episode {episode}: Symbol={symbol}, Start_date={start_date}")
+
+        except Exception as e:
+            logger.warning(
+                f"Episode {episode}: Could not get initial episode info: {e}")
 
         while not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, terminated, truncated, info = eval_env.step(action)
             done = terminated or truncated
+            step_count += 1
 
             # Track portfolio valuation
             if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
                 current_value = eval_env.unwrapped.historical_info["portfolio_valuation", -1]
-                logger.debug(f"Episode {episode}, Step: {len(portfolio_values)}, "
-                             f"Current portfolio value: {current_value:.2f}")
+                logger.debug(
+                    f"Episode {episode}, Step {step_count}: Portfolio value: {current_value:.2f}")
                 if initial_value is None:
                     initial_value = current_value
+                    logger.info(
+                        f"Episode {episode}: Initial portfolio value: {initial_value:.2f}")
                 portfolio_values.append(current_value)
+
+        # Get final episode information
+        try:
+            if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
+                history = eval_env.unwrapped.historical_info
+
+                # Get symbol information (should be same as start)
+                symbol = "Unknown"
+                if 'data_symbol' in history.columns:
+                    symbol = history['data_symbol', -
+                                     1] if len(history) > 0 else "Unknown"
+
+                # Get end date
+                end_date = "Unknown"
+                if 'date' in history.columns and len(history) > 0:
+                    end_date = pd.to_datetime(
+                        history['date', -1]).strftime('%Y-%m-%d')
+
+                # Get episode length from history
+                episode_length = len(history) if hasattr(
+                    history, '__len__') else step_count
+
+                logger.info(f"Episode {episode}: Symbol={symbol}, End_date={end_date}, "
+                            f"Episode_length={episode_length}, Steps_taken={step_count}")
+
+        except Exception as e:
+            logger.warning(
+                f"Episode {episode}: Could not get final episode info: {e}")
 
         # Calculate episode return and risk-adjusted return
         if initial_value is not None and len(portfolio_values) > 1:
@@ -483,24 +540,44 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
             episode_return = (final_value - initial_value) / initial_value
             episode_returns.append(episode_return)
 
+            logger.info(f"Episode {episode}: Initial_value={initial_value:.2f}, "
+                        f"Final_value={final_value:.2f}, Episode_return={episode_return:.4f}")
+
             # Calculate episode duration in years to adjust the risk-free rate
-            history = eval_env.unwrapped.historical_info
-            start_date = pd.to_datetime(history['date', 0])
-            end_date = pd.to_datetime(history['date', -1])
-            duration_in_days = (end_date - start_date).days
+            try:
+                history = eval_env.unwrapped.historical_info
+                start_date_obj = pd.to_datetime(history['date', 0])
+                end_date_obj = pd.to_datetime(history['date', -1])
+                duration_in_days = (end_date_obj - start_date_obj).days
 
-            # Avoid division by zero if episode is less than a day
-            if duration_in_days > 0:
-                duration_in_years = duration_in_days / 365.25
-                # De-annualize the risk-free rate for the episode's duration
-                episode_risk_free_return = (
-                    1 + annual_risk_free_rate)**duration_in_years - 1
-            else:
-                episode_risk_free_return = 0.0
+                logger.debug(f"Episode {episode}: Duration={duration_in_days} days "
+                             f"({start_date_obj.strftime('%Y-%m-%d')} to {end_date_obj.strftime('%Y-%m-%d')})")
 
-            # Calculate excess return over the risk-free rate
-            excess_return = episode_return - episode_risk_free_return
-            episode_excess_returns.append(excess_return)
+                # Avoid division by zero if episode is less than a day
+                if duration_in_days > 0:
+                    duration_in_years = duration_in_days / 365.25
+                    # De-annualize the risk-free rate for the episode's duration
+                    episode_risk_free_return = (
+                        1 + annual_risk_free_rate)**duration_in_years - 1
+                else:
+                    episode_risk_free_return = 0.0
+
+                # Calculate excess return over the risk-free rate
+                excess_return = episode_return - episode_risk_free_return
+                episode_excess_returns.append(excess_return)
+
+                logger.info(f"Episode {episode}: Risk_free_return={episode_risk_free_return:.4f}, "
+                            f"Excess_return={excess_return:.4f}")
+
+            except Exception as e:
+                logger.warning(
+                    f"Episode {episode}: Could not calculate duration/excess return: {e}")
+                # Fallback: assume zero risk-free return
+                excess_return = episode_return
+                episode_excess_returns.append(excess_return)
+        else:
+            logger.warning(f"Episode {episode}: Insufficient data for return calculation "
+                           f"(initial_value={initial_value}, portfolio_values_len={len(portfolio_values)})")
 
     # Calculate Sharpe ratio from episode returns
     if len(episode_returns) > 1:
@@ -519,8 +596,12 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
         # Not enough episodes to calculate meaningful Sharpe ratio
         sharpe_ratio = 0.0
 
-    logger.info(f"Evaluation results: Mean excess return: {np.mean(episode_excess_returns):.4f}, "
-                f"Std return: {np.std(episode_returns):.4f}, Sharpe ratio: {sharpe_ratio:.4f}")
+    logger.info(
+        f"Final evaluation results across {len(episode_returns)} episodes:")
+    logger.info(f"  Mean excess return: {np.mean(episode_excess_returns):.4f}")
+    logger.info(f"  Std return: {np.std(episode_returns):.4f}")
+    logger.info(f"  Sharpe ratio: {sharpe_ratio:.4f}")
+    logger.info(f"  Episode returns: {[f'{r:.4f}' for r in episode_returns]}")
 
     return sharpe_ratio
 
