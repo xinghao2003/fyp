@@ -691,7 +691,7 @@ class OptunaPruningCallback(BaseCallback):
             logger.info(
                 f"Pruning: Evaluating trial {self.trial.number} at step {self.parent.n_calls}")
             # Only evaluate for pruning every few evaluations to save computation
-            if self.parent.n_calls % 3 == 0:  # Every 3rd evaluation
+            if self.parent.n_calls % 2 == 0:  # Every 2nd evaluation
                 try:
                     logger.info(
                         f"Pruning: Evaluating trial {self.trial.number} for pruning at step {self.parent.n_calls}")
@@ -1096,7 +1096,7 @@ def run_optuna_optimization(number_of_trials=50):
             sampler=TPESampler(seed=SEED),
             pruner=MedianPruner(
                 n_startup_trials=number_of_trials * 0.1,    # Increased for better baseline
-                n_warmup_steps=15,      # Increased for more stable pruning
+                n_warmup_steps=10,      # Increased for more stable pruning
                 interval_steps=5        # Check every 5 evaluations
             ),
             # Self define the RUN_ID for resume
@@ -1112,7 +1112,7 @@ def run_optuna_optimization(number_of_trials=50):
             sampler=TPESampler(seed=SEED),
             pruner=MedianPruner(
                 n_startup_trials=number_of_trials * 0.1,
-                n_warmup_steps=15,
+                n_warmup_steps=10,
                 interval_steps=5
             ),
             study_name=f"ppo_trading_{RUN_ID}",
@@ -1124,7 +1124,7 @@ def run_optuna_optimization(number_of_trials=50):
 
     # Optimize with pruning
     study.optimize(objective, n_trials=number_of_trials,
-                   timeout=number_of_trials * 3600)  # 12 hours timeout
+                   timeout=number_of_trials * 3600)  # 1 hour per trial
 
     # Print results
     print("\nOptimization completed!")
@@ -1252,7 +1252,8 @@ def run_optuna_optimization(number_of_trials=50):
                                        best_model_save_path=f'./model/{RUN_ID}/',
                                        log_path=f'./eval_logs/{RUN_ID}/',
                                        eval_freq=5000000 * 0.05,  # Every 5% of total timesteps
-                                       n_eval_episodes=math.ceil(65 * 0.2),  # 20% of datasets
+                                       n_eval_episodes=math.ceil(
+                                           65 * 0.2),  # 20% of datasets
                                        deterministic=True,
                                        render=False,
                                        callback_after_eval=final_stop_callback,
