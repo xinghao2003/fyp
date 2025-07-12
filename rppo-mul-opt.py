@@ -15,6 +15,7 @@ import logging
 import shutil
 import traceback
 import sys
+import math
 
 # Import base reward function
 # from reward import reward_function_5
@@ -97,59 +98,66 @@ def reward_function_5(
 
 # Helper functions for metrics
 def calculate_max_drawdown(history):
-    portfolio_valuations = np.asarray(history['portfolio_valuation'], dtype=np.float64)
+    portfolio_valuations = np.asarray(
+        history['portfolio_valuation'], dtype=np.float64)
     if len(portfolio_valuations) < 2:
         return 0.0
     peaks = np.maximum.accumulate(portfolio_valuations)
     drawdowns = (peaks - portfolio_valuations) / (peaks + 1e-8)
     return np.max(drawdowns)
 
+
 def calculate_annualized_return(history):
-    portfolio_valuations = np.asarray(history['portfolio_valuation'], dtype=np.float64)
+    portfolio_valuations = np.asarray(
+        history['portfolio_valuation'], dtype=np.float64)
     if len(portfolio_valuations) < 2:
         return 0.0
-    
-    total_return = (portfolio_valuations[-1] - portfolio_valuations[0]) / portfolio_valuations[0]
-    
+
+    total_return = (
+        portfolio_valuations[-1] - portfolio_valuations[0]) / portfolio_valuations[0]
+
     start_date = pd.to_datetime(history['date', 0])
     end_date = pd.to_datetime(history['date', -1])
     duration_in_days = (end_date - start_date).days
-    
+
     if duration_in_days <= 0:
         return 0.0
-        
+
     duration_in_years = duration_in_days / 365.25
     annualized_return = (1 + total_return) ** (1 / duration_in_years) - 1
     return annualized_return
 
+
 def calculate_sharpe_ratio(history, risk_free_rate=0.0404):
-    portfolio_valuations = np.asarray(history['portfolio_valuation'], dtype=np.float64)
+    portfolio_valuations = np.asarray(
+        history['portfolio_valuation'], dtype=np.float64)
     if len(portfolio_valuations) < 2:
         return 0.0
-    
+
     returns = np.diff(portfolio_valuations) / portfolio_valuations[:-1]
-    
+
     start_date = pd.to_datetime(history['date', 0])
     end_date = pd.to_datetime(history['date', -1])
     duration_in_days = (end_date - start_date).days
-    
+
     if duration_in_days <= 0:
         return 0.0
-        
+
     # Assuming daily data for simplicity in calculating daily risk-free rate
     daily_risk_free_rate = (1 + risk_free_rate)**(1/365.25) - 1
-    
+
     excess_returns = returns - daily_risk_free_rate
-    
+
     mean_excess_return = np.mean(excess_returns)
     std_dev_returns = np.std(returns)
-    
+
     if std_dev_returns < 1e-8:
         return 0.0
-        
+
     # Annualize Sharpe Ratio
     sharpe_ratio = mean_excess_return / std_dev_returns
-    annualized_sharpe = sharpe_ratio * np.sqrt(365.25) # Assuming daily returns
+    annualized_sharpe = sharpe_ratio * \
+        np.sqrt(365.25)  # Assuming daily returns
     return annualized_sharpe
 
 
@@ -680,15 +688,20 @@ class OptunaPruningCallback(BaseCallback):
         # This callback is called after each evaluation by EvalCallback
         # We'll evaluate using Sharpe ratio for pruning decisions
         if hasattr(self.parent, 'n_calls') and self.parent.n_calls > 0:
+            logger.info(
+                f"Pruning: Evaluating trial {self.trial.number} at step {self.parent.n_calls}")
             # Only evaluate for pruning every few evaluations to save computation
             if self.parent.n_calls % 3 == 0:  # Every 3rd evaluation
                 try:
+                    logger.info(
+                        f"Pruning: Evaluating trial {self.trial.number} for pruning at step {self.parent.n_calls}")
                     # Quick Sharpe ratio evaluation for pruning (fewer episodes)
                     # Use consistent base seed for fair comparison across all trials
                     sharpe_ratio = evaluate_sharpe_ratio(
                         model=self.model,
                         eval_env=self.eval_env,
-                        n_episodes=3,  # Fewer episodes for faster pruning evaluation
+                        # Fewer episodes for faster pruning evaluation
+                        n_episodes=math.ceil(65 * 0.1),
                         base_seed=self.base_seed  # Same episodes for all trials
                     )
 
@@ -842,10 +855,12 @@ def objective(trial):
                 np.diff(history['position']) != 0))
             train_env.add_metric(
                 'Episode Length', lambda history: len(history['position']))
-            train_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
-            train_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
-            train_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
-            
+            train_env.add_metric(
+                'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+            train_env.add_metric(
+                'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+            train_env.add_metric(
+                'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
             logger.info(
                 f"Trial {trial.number}: Resetting training environment...")
@@ -881,9 +896,12 @@ def objective(trial):
                 np.diff(history['position']) != 0))
             eval_env.add_metric(
                 'Episode Length', lambda history: len(history['position']))
-            eval_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
-            eval_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
-            eval_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+            eval_env.add_metric(
+                'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+            eval_env.add_metric(
+                'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+            eval_env.add_metric(
+                'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
             logger.info(
                 f"Trial {trial.number}: Resetting evaluation environment...")
@@ -929,11 +947,12 @@ def objective(trial):
             raise
 
         trial_total_timesteps = 2000000
+        total_datasets = 65
 
         stop_callback = StopTrainingOnNoModelImprovement(
-            max_no_improvement_evals=5, min_evals=3, verbose=1)
+            max_no_improvement_evals=4, min_evals=4, verbose=1)
 
-        # Create pruning callback with Sharpe ratio evaluation
+        # Create pruning callback with Sharpe ratio
         pruning_callback = OptunaPruningCallback(
             trial=trial,
             eval_env=eval_env,
@@ -948,8 +967,10 @@ def objective(trial):
                                      best_model_save_path=trial_dir,
                                      log_path=trial_dir,
                                      # Evaluate every 2.5% of total timesteps
-                                     eval_freq=trial_total_timesteps * 0.025,
-                                     n_eval_episodes=5,
+                                     eval_freq=math.ceil(
+                                         trial_total_timesteps * 0.025),
+                                     n_eval_episodes=math.ceil(
+                                         total_datasets * 0.1),  # 10% of datasets
                                      deterministic=True,
                                      render=False,
                                      callback_after_eval=callback_list,
@@ -959,7 +980,7 @@ def objective(trial):
         try:
             logger.info(f"Trial {trial.number}: Starting training...")
             model.learn(total_timesteps=trial_total_timesteps,
-                        callback=eval_callback)
+                        callback=eval_callback, progress_bar=True)
             logger.info(
                 f"Trial {trial.number}: Training completed successfully")
         except Exception as e:
@@ -981,7 +1002,7 @@ def objective(trial):
             sharpe_ratio = evaluate_sharpe_ratio(
                 model=model,
                 eval_env=eval_env,
-                n_episodes=10,
+                n_episodes=math.ceil(total_datasets * 0.2),  # 20% of datasets
                 base_seed=SEED  # Same episodes for all trials - fair comparison
             )
             logger.info(
@@ -1059,7 +1080,7 @@ def objective(trial):
         return -np.inf
 
 
-def run_optuna_optimization():
+def run_optuna_optimization(number_of_trials=50):
     """Run Optuna hyperparameter optimization"""
     # Create necessary directories
     os.makedirs('optuna_studies', exist_ok=True)
@@ -1074,7 +1095,7 @@ def run_optuna_optimization():
             # TODO: Possibly use RUN_ID as seed, introduce randomness
             sampler=TPESampler(seed=SEED),
             pruner=MedianPruner(
-                n_startup_trials=10,    # Increased for better baseline
+                n_startup_trials=number_of_trials * 0.1,    # Increased for better baseline
                 n_warmup_steps=15,      # Increased for more stable pruning
                 interval_steps=5        # Check every 5 evaluations
             ),
@@ -1090,7 +1111,7 @@ def run_optuna_optimization():
             direction='maximize',
             sampler=TPESampler(seed=SEED),
             pruner=MedianPruner(
-                n_startup_trials=10,
+                n_startup_trials=number_of_trials * 0.1,
                 n_warmup_steps=15,
                 interval_steps=5
             ),
@@ -1102,7 +1123,8 @@ def run_optuna_optimization():
     print("Evaluation metric: Sharpe ratio (consistent across all trials)")
 
     # Optimize with pruning
-    study.optimize(objective, n_trials=1, timeout=3600*12)  # 12 hours timeout
+    study.optimize(objective, n_trials=number_of_trials,
+                   timeout=number_of_trials * 3600)  # 12 hours timeout
 
     # Print results
     print("\nOptimization completed!")
@@ -1170,9 +1192,12 @@ def run_optuna_optimization():
         np.diff(history['position']) != 0))
     final_train_env.add_metric(
         'Episode Length', lambda history: len(history['position']))
-    final_train_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
-    final_train_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
-    final_train_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+    final_train_env.add_metric(
+        'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+    final_train_env.add_metric(
+        'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+    final_train_env.add_metric(
+        'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
     final_eval_env = gym.make('MultiDatasetTradingEnv',
                               dataset_dir='dataset/1d-2005/val/*.pkl',
@@ -1190,9 +1215,12 @@ def run_optuna_optimization():
         np.diff(history['position']) != 0))
     final_eval_env.add_metric(
         'Episode Length', lambda history: len(history['position']))
-    final_eval_env.add_metric('Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
-    final_eval_env.add_metric('Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
-    final_eval_env.add_metric('Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+    final_eval_env.add_metric(
+        'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+    final_eval_env.add_metric(
+        'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+    final_eval_env.add_metric(
+        'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
     final_train_env.reset(seed=SEED)
     final_eval_env.reset(seed=SEED)
@@ -1218,13 +1246,13 @@ def run_optuna_optimization():
 
     # Final training callbacks
     final_stop_callback = StopTrainingOnNoModelImprovement(
-        max_no_improvement_evals=10, min_evals=5, verbose=1)
+        max_no_improvement_evals=4, min_evals=4, verbose=1)
 
     final_eval_callback = EvalCallback(final_eval_env,
                                        best_model_save_path=f'./model/{RUN_ID}/',
                                        log_path=f'./eval_logs/{RUN_ID}/',
-                                       eval_freq=100000,
-                                       n_eval_episodes=5,
+                                       eval_freq=5000000 * 0.05,  # Every 5% of total timesteps
+                                       n_eval_episodes=math.ceil(65 * 0.2),  # 20% of datasets
                                        deterministic=True,
                                        render=False,
                                        callback_after_eval=final_stop_callback,
