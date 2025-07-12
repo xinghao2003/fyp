@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 from sympy import root
 
-COLUMNS = [
-    "rate", "boll_ub", "boll_lb", "dx", "adx", "adxr",
-    "wt1", "wt2", "cci", "rsi", "stochrsi", "cr-ma1", "cr-ma2", "cr-ma3"
-]
+COLUMNS = ['open', 'close', 'high', 'low', 'volume', 'macd', 'rsi', 'close_10_sma',
+           'close_10_ema', 'adx', 'boll_ub', 'boll_lb', 'boll', 'kdjk', 'kdjd', 'kdjj', 'atr']
+
+NORM_COLUMNS = [f'norm_{col}' for col in COLUMNS]
 
 
 def clean_first_record(csv_path):
@@ -14,14 +14,14 @@ def clean_first_record(csv_path):
     if df.empty:
         return False
 
-    # Check first 5 records or all records if less than 5
-    max_check = min(5, len(df))
+    # Check first 30, due to normalization
+    max_check = min(30, len(df))
     rows_to_delete = 0
 
     # Find consecutive rows with null values from the beginning
     for i in range(max_check):
         row = df.iloc[i]
-        if row[COLUMNS].isnull().any():  # If any column has null value
+        if row[COLUMNS + NORM_COLUMNS].isnull().any():  # If any column has null value
             rows_to_delete = i + 1
         else:
             break  # Stop at first row without null values

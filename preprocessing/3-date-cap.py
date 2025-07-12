@@ -44,7 +44,8 @@ def process_csv_files(folder_path):
             cutoff_end = pd.to_datetime('2025-06-30', utc=True)
 
             # Filter records from 2005-01-01 to 2025-06-30 (inclusive)
-            df_filtered = df[(df['date'] >= cutoff_start) & (df['date'] <= cutoff_end)]
+            df_filtered = df[(df['date'] >= cutoff_start)
+                             & (df['date'] <= cutoff_end)]
 
             filtered_count = len(df_filtered)
             removed_count = original_count - filtered_count

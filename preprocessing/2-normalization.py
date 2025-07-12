@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
             if norm_features:
                 # Save back to the same file
-                processed_df.to_csv(csv_file_path)
+                processed_df.to_csv(csv_file_path, index=True)
                 print(
                     f"  ✓ Added {len(norm_features)} normalized columns and saved")
                 processed_count += 1

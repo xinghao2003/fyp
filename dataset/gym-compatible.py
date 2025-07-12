@@ -50,6 +50,8 @@ for csv_path in glob.glob(f"{INPUT_DIR}/**/*.csv", recursive=True):
     # Tell which dataset has na
     used_columns = ['open', 'close', 'high', 'low', 'volume', 'macd', 'rsi', 'close_10_sma',
                     'close_10_ema', 'adx', 'boll_ub', 'boll_lb', 'boll', 'kdjk', 'kdjd', 'kdjj', 'atr']
+    norm_column = [f'norm_{col}' for col in used_columns]
+    used_columns += norm_column
     if df[used_columns].isnull().values.any():
         print(f"Warning: {csv_path} contains NaN values. "
               "Skipping dropna() - assume data is already clean and complete.")
