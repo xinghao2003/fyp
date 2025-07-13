@@ -615,17 +615,17 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
     )
 
     predictable_eval_env.add_metric(
-        'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
-    predictable_eval_env.add_metric('Position Changes', lambda history: np.sum(
+        'Sym', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+    predictable_eval_env.add_metric('PosChg', lambda history: np.sum(
         np.diff(history['position']) != 0))
     predictable_eval_env.add_metric(
-        'Episode Length', lambda history: len(history['position']))
+        'Len', lambda history: len(history['position']))
     predictable_eval_env.add_metric(
-        'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+        'MDD', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
     predictable_eval_env.add_metric(
-        'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+        'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
     predictable_eval_env.add_metric(
-        'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+        'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
     portfolio_values = []
     episode_returns = []
@@ -987,17 +987,17 @@ def objective(trial):
                                  )
 
             train_env.add_metric(
-                'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
-            train_env.add_metric('Position Changes', lambda history: np.sum(
+                'Sym', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+            train_env.add_metric('PosChg', lambda history: np.sum(
                 np.diff(history['position']) != 0))
             train_env.add_metric(
-                'Episode Length', lambda history: len(history['position']))
+                'Len', lambda history: len(history['position']))
             train_env.add_metric(
-                'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+                'MDD', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
             train_env.add_metric(
-                'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+                'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
             train_env.add_metric(
-                'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+                'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
             logger.info(
                 f"Trial {trial.number}: Resetting training environment...")
@@ -1028,17 +1028,17 @@ def objective(trial):
                                 )
 
             eval_env.add_metric(
-                'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
-            eval_env.add_metric('Position Changes', lambda history: np.sum(
+                'Sym', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+            eval_env.add_metric('PosChg', lambda history: np.sum(
                 np.diff(history['position']) != 0))
             eval_env.add_metric(
-                'Episode Length', lambda history: len(history['position']))
+                'Len', lambda history: len(history['position']))
             eval_env.add_metric(
-                'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+                'MDD', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
             eval_env.add_metric(
-                'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+                'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
             eval_env.add_metric(
-                'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+                'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
             logger.info(
                 f"Trial {trial.number}: Resetting evaluation environment...")
@@ -1237,7 +1237,7 @@ def run_optuna_optimization(number_of_trials=50):
     study_db_path = f'sqlite:///optuna_studies/{RUN_ID}_study.db'
 
     sampler_seed = int(hashlib.sha256(
-        RUN_ID.encode()).hexdigest(), 16) % (10**8),
+        RUN_ID.encode()).hexdigest(), 16) % (10**8)
 
     logger.info(
         f"Creating Optuna study with database: {study_db_path} and sampler seed: {sampler_seed}")
@@ -1341,17 +1341,17 @@ def run_optuna_optimization(number_of_trials=50):
                                )
 
     final_train_env.add_metric(
-        'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
-    final_train_env.add_metric('Position Changes', lambda history: np.sum(
+        'Sym', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+    final_train_env.add_metric('PosChg', lambda history: np.sum(
         np.diff(history['position']) != 0))
     final_train_env.add_metric(
-        'Episode Length', lambda history: len(history['position']))
+        'Len', lambda history: len(history['position']))
     final_train_env.add_metric(
-        'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+        'MDD', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
     final_train_env.add_metric(
-        'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+        'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
     final_train_env.add_metric(
-        'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+        'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
     final_eval_env = gym.make('MultiDatasetTradingEnv',
                               dataset_dir='dataset/1d-2005/val/*.pkl',
@@ -1364,17 +1364,17 @@ def run_optuna_optimization(number_of_trials=50):
                               )
 
     final_eval_env.add_metric(
-        'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
-    final_eval_env.add_metric('Position Changes', lambda history: np.sum(
+        'Sym', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+    final_eval_env.add_metric('PosChg', lambda history: np.sum(
         np.diff(history['position']) != 0))
     final_eval_env.add_metric(
-        'Episode Length', lambda history: len(history['position']))
+        'Len', lambda history: len(history['position']))
     final_eval_env.add_metric(
-        'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+        'MDD', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
     final_eval_env.add_metric(
-        'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+        'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
     final_eval_env.add_metric(
-        'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+        'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
 
     final_train_env.reset(seed=SEED)
     final_eval_env.reset(seed=SEED)
