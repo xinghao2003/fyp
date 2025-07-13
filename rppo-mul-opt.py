@@ -24,26 +24,43 @@ from gym_trading_env.environments import MultiDatasetTradingEnv
 
 class predictableMultiDatasetTradingEnv(MultiDatasetTradingEnv):
     def __init__(self, dataset_paths: list, *args, **kwargs):
-        self.dataset_paths = dataset_paths
-        self.dataset_nb_uses = np.zeros(shape=(len(self.dataset_paths),))
+        # This __init__ method bypasses the MultiDatasetTradingEnv constructor
+        # and calls the TradingEnv constructor directly. This allows us to use
+        # a fixed list of dataset paths instead of a glob pattern.
 
-        # The following are normally in the parent __init__ but we need to set them before calling it
-        self.preprocess = kwargs.get('preprocess', lambda df: df)
-        self.episodes_between_dataset_switch = kwargs.get(
+        # 1. Set up properties managed by MultiDatasetTradingEnv
+        self.dataset_pathes = dataset_paths
+        if len(self.dataset_pathes) == 0:
+            raise FileNotFoundError(
+                "The provided 'dataset_paths' list is empty.")
+
+        self.dataset_nb_uses = np.zeros(shape=(len(self.dataset_pathes),))
+
+        # Extract kwargs that belong to MultiDatasetTradingEnv, not TradingEnv
+        self.preprocess = kwargs.pop('preprocess', lambda df: df)
+        self.episodes_between_dataset_switch = kwargs.pop(
             'episodes_between_dataset_switch', 1)
-        self.verbose = kwargs.get('verbose', 1)
+        self._episodes_on_this_dataset = 0
 
-        # Call parent __init__ with the first dataset
+        # 2. Load the first dataset using the same logic as MultiDatasetTradingEnv
+        first_dataset_df = self.next_dataset()
+
+        # 3. Call the grandparent (TradingEnv) constructor directly
+        # This ensures all other parameters (reward_function, windows, etc.) are passed correctly.
         super(MultiDatasetTradingEnv, self).__init__(
-            self.next_dataset(), *args, **kwargs)
+            df=first_dataset_df, *args, **kwargs)
 
     def reset(self, seed=None, options=None, **kwargs):
-        # Use the seed to reset the dataset usage counts and select the next one
+        # The reset logic from MultiDatasetTradingEnv is preserved.
+        # It handles switching datasets when an episode ends.
         if seed is not None:
+            # Ensure dataset selection is deterministic for evaluation
             np.random.seed(seed)
-            # Reset usage counts for reproducibility
             self.dataset_nb_uses.fill(0)
             self._episodes_on_this_dataset = 0
+            # Explicitly set the next dataset to ensure predictability
+            self._set_df(self.next_dataset())
+            return super(MultiDatasetTradingEnv, self).reset(seed=seed, options=options, **kwargs)
 
         return super().reset(seed=seed, options=options, **kwargs)
 
@@ -629,6 +646,9 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
         done = False
         initial_value = None
         step_count = 0
+
+        logger.info(
+            f"Episode {episode}: Sharpe eval env reset successful. Obs shape: {obs.shape if hasattr(obs, 'shape') else type(obs)}")
 
         # Clear portfolio values for the new episode
         portfolio_values.clear()
@@ -1218,6 +1238,9 @@ def run_optuna_optimization(number_of_trials=50):
 
     sampler_seed = int(hashlib.sha256(
         RUN_ID.encode()).hexdigest(), 16) % (10**8),
+
+    logger.info(
+        f"Creating Optuna study with database: {study_db_path} and sampler seed: {sampler_seed}")
 
     try:
         study = optuna.create_study(
