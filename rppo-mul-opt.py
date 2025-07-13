@@ -16,6 +16,36 @@ import shutil
 import traceback
 import sys
 import math
+import hashlib
+import glob
+
+from gym_trading_env.environments import MultiDatasetTradingEnv
+
+
+class predictableMultiDatasetTradingEnv(MultiDatasetTradingEnv):
+    def __init__(self, dataset_paths: list, *args, **kwargs):
+        self.dataset_paths = dataset_paths
+        self.dataset_nb_uses = np.zeros(shape=(len(self.dataset_paths),))
+
+        # The following are normally in the parent __init__ but we need to set them before calling it
+        self.preprocess = kwargs.get('preprocess', lambda df: df)
+        self.episodes_between_dataset_switch = kwargs.get(
+            'episodes_between_dataset_switch', 1)
+        self.verbose = kwargs.get('verbose', 1)
+
+        # Call parent __init__ with the first dataset
+        super(MultiDatasetTradingEnv, self).__init__(
+            self.next_dataset(), *args, **kwargs)
+
+    def reset(self, seed=None, options=None, **kwargs):
+        # Use the seed to reset the dataset usage counts and select the next one
+        if seed is not None:
+            np.random.seed(seed)
+            # Reset usage counts for reproducibility
+            self.dataset_nb_uses.fill(0)
+            self._episodes_on_this_dataset = 0
+
+        return super().reset(seed=seed, options=options, **kwargs)
 
 # Import base reward function
 # from reward import reward_function_5
@@ -120,12 +150,42 @@ def calculate_annualized_return(history):
     end_date = pd.to_datetime(history['date', -1])
     duration_in_days = (end_date - start_date).days
 
+    # Handle edge cases for duration
     if duration_in_days <= 0:
         return 0.0
 
     duration_in_years = duration_in_days / 365.25
-    annualized_return = (1 + total_return) ** (1 / duration_in_years) - 1
-    return annualized_return
+
+    # Prevent issues with very short durations or extreme returns
+    if duration_in_years < 1/365.25:  # Less than 1 day
+        return total_return  # Return simple return for very short periods
+
+    # Handle extreme cases that could cause numerical issues
+    if total_return <= -1.0:  # Complete loss
+        return -1.0
+
+    if total_return > 100:  # Extremely high returns (>10000%)
+        return 100.0  # Cap at 10000% annualized return
+
+    try:
+        # Calculate annualized return with safety checks
+        annualized_return = (1 + total_return) ** (1 / duration_in_years) - 1
+
+        # Check for invalid results
+        if np.isnan(annualized_return) or np.isinf(annualized_return):
+            return total_return / duration_in_years  # Fallback to linear approximation
+
+        # Cap extreme annualized returns
+        if annualized_return > 100:
+            return 100.0
+        if annualized_return < -1.0:
+            return -1.0
+
+        return annualized_return
+
+    except (OverflowError, ZeroDivisionError, ValueError):
+        # Fallback to linear approximation if power calculation fails
+        return total_return / duration_in_years
 
 
 def calculate_sharpe_ratio(history, risk_free_rate=0.0404):
@@ -493,7 +553,9 @@ def create_tunable_reward_function(trial):
     return tunable_reward_function
 
 
-def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_risk_free_rate=0.0404):
+def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_risk_free_rate=0.0404,
+                          custom_reward_function=None, preprocess_func=None, windows=None,
+                          trading_fees=None, borrow_interest_rate=None):
     """
     Evaluate the trained model using Sharpe ratio as a consistent metric.
     This function evaluates the actual trading performance independent of the reward function.
@@ -507,14 +569,47 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
 
     Args:
         model: Trained RL model
-        eval_env: Evaluation environment
+        eval_env: Evaluation environment (not used, kept for compatibility)
         n_episodes: Number of episodes to evaluate
         base_seed: Base seed for consistent evaluation across all trials
         annual_risk_free_rate (float): The annualized risk-free rate (e.g., 0.0404 for 4.04%, taken from annual performance of US 1-year Treasury).
+        custom_reward_function: Reward function to use for the environment
+        preprocess_func: Preprocessing function to use for the environment
+        windows: Windows parameter for the environment
+        trading_fees: Trading fees parameter for the environment
+        borrow_interest_rate: Borrow interest rate parameter for the environment
 
     Returns:
         float: Sharpe ratio of the portfolio returns
     """
+    # Create predictable evaluation environment specifically for Sharpe ratio evaluation
+    val_dataset_paths = sorted(glob.glob('dataset/1d-2005/val/*.pkl'))
+    if not val_dataset_paths:
+        raise FileNotFoundError("No validation datasets found.")
+
+    predictable_eval_env = predictableMultiDatasetTradingEnv(
+        dataset_paths=val_dataset_paths,
+        reward_function=custom_reward_function,
+        preprocess=preprocess_func,
+        windows=windows,
+        positions=[-1, 0, 1],
+        trading_fees=trading_fees,
+        borrow_interest_rate=borrow_interest_rate,
+    )
+
+    predictable_eval_env.add_metric(
+        'Symbol', lambda history: history['data_symbol', -1] if 'data_symbol' in history.columns else 'Unknown')
+    predictable_eval_env.add_metric('Position Changes', lambda history: np.sum(
+        np.diff(history['position']) != 0))
+    predictable_eval_env.add_metric(
+        'Episode Length', lambda history: len(history['position']))
+    predictable_eval_env.add_metric(
+        'Max Drawdown', lambda history: f"{calculate_max_drawdown(history) * 100:.2f}%")
+    predictable_eval_env.add_metric(
+        'Annualized Return', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
+    predictable_eval_env.add_metric(
+        'Sharpe Ratio', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+
     portfolio_values = []
     episode_returns = []
     episode_excess_returns = []
@@ -530,7 +625,7 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
         episode_seed = base_seed + episode
         logger.info(f"Starting episode {episode} with seed {episode_seed}")
 
-        obs, _ = eval_env.reset(seed=episode_seed)
+        obs, _ = predictable_eval_env.reset(seed=episode_seed)
         done = False
         initial_value = None
         step_count = 0
@@ -540,8 +635,8 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
 
         # Get initial episode information after reset
         try:
-            if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
-                history = eval_env.unwrapped.historical_info
+            if hasattr(predictable_eval_env, 'unwrapped') and hasattr(predictable_eval_env.unwrapped, 'historical_info'):
+                history = predictable_eval_env.unwrapped.historical_info
 
                 # Get symbol information
                 symbol = "Unknown"
@@ -564,13 +659,15 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
 
         while not done:
             action, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = eval_env.step(action)
+            obs, reward, terminated, truncated, info = predictable_eval_env.step(
+                action)
             done = terminated or truncated
             step_count += 1
 
             # Track portfolio valuation
-            if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
-                current_value = eval_env.unwrapped.historical_info["portfolio_valuation", -1]
+            if hasattr(predictable_eval_env, 'unwrapped') and hasattr(predictable_eval_env.unwrapped, 'historical_info'):
+                current_value = predictable_eval_env.unwrapped.historical_info[
+                    "portfolio_valuation", -1]
                 logger.debug(
                     f"Episode {episode}, Step {step_count}: Portfolio value: {current_value:.2f}")
                 if initial_value is None:
@@ -581,8 +678,8 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
 
         # Get final episode information
         try:
-            if hasattr(eval_env, 'unwrapped') and hasattr(eval_env.unwrapped, 'historical_info'):
-                history = eval_env.unwrapped.historical_info
+            if hasattr(predictable_eval_env, 'unwrapped') and hasattr(predictable_eval_env.unwrapped, 'historical_info'):
+                history = predictable_eval_env.unwrapped.historical_info
 
                 # Get symbol information (should be same as start)
                 symbol = "Unknown"
@@ -618,7 +715,7 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
 
             # Calculate episode duration in years to adjust the risk-free rate
             try:
-                history = eval_env.unwrapped.historical_info
+                history = predictable_eval_env.unwrapped.historical_info
                 start_date_obj = pd.to_datetime(history['date', 0])
                 end_date_obj = pd.to_datetime(history['date', -1])
                 duration_in_days = (end_date_obj - start_date_obj).days
@@ -652,6 +749,9 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
             logger.warning(f"Episode {episode}: Insufficient data for return calculation "
                            f"(initial_value={initial_value}, portfolio_values_len={len(portfolio_values)})")
 
+    # Close the predictable evaluation environment
+    predictable_eval_env.close()
+
     # Calculate Sharpe ratio from episode returns
     if len(episode_returns) > 1:
         # Use mean of excess returns
@@ -682,12 +782,19 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
 class OptunaPruningCallback(BaseCallback):
     """Custom callback for Optuna pruning during training"""
 
-    def __init__(self, trial: optuna.Trial, eval_env, model, base_seed=42, verbose: int = 0):
+    def __init__(self, trial: optuna.Trial, eval_env, model, base_seed=42,
+                 custom_reward_function=None, preprocess_func=None, windows=None,
+                 trading_fees=None, borrow_interest_rate=None, verbose: int = 0):
         super().__init__(verbose)
         self.trial = trial
         self.eval_env = eval_env
         self.model = model
         self.base_seed = base_seed
+        self.custom_reward_function = custom_reward_function
+        self.preprocess_func = preprocess_func
+        self.windows = windows
+        self.trading_fees = trading_fees
+        self.borrow_interest_rate = borrow_interest_rate
 
     def _on_step(self) -> bool:
         # This callback is called after each evaluation by EvalCallback
@@ -707,7 +814,12 @@ class OptunaPruningCallback(BaseCallback):
                         eval_env=self.eval_env,
                         # Fewer episodes for faster pruning evaluation
                         n_episodes=math.ceil(65 * 0.1),
-                        base_seed=self.base_seed  # Same episodes for all trials
+                        base_seed=self.base_seed,  # Same episodes for all trials
+                        custom_reward_function=self.custom_reward_function,
+                        preprocess_func=self.preprocess_func,
+                        windows=self.windows,
+                        trading_fees=self.trading_fees,
+                        borrow_interest_rate=self.borrow_interest_rate
                     )
 
                     # Optuna expects steps to be monotonically increasing
@@ -962,7 +1074,12 @@ def objective(trial):
             trial=trial,
             eval_env=eval_env,
             model=model,
-            base_seed=SEED
+            base_seed=SEED,
+            custom_reward_function=custom_reward_function,
+            preprocess_func=preprocess_func,
+            windows=windows,
+            trading_fees=trading_fees,
+            borrow_interest_rate=borrow_interest_rate
         )
 
         # Chain the callbacks
@@ -985,7 +1102,7 @@ def objective(trial):
         try:
             logger.info(f"Trial {trial.number}: Starting training...")
             model.learn(total_timesteps=trial_total_timesteps,
-                        callback=eval_callback, progress_bar=True)
+                        callback=eval_callback)
             logger.info(
                 f"Trial {trial.number}: Training completed successfully")
         except Exception as e:
@@ -1008,7 +1125,12 @@ def objective(trial):
                 model=model,
                 eval_env=eval_env,
                 n_episodes=math.ceil(total_datasets * 0.2),  # 20% of datasets
-                base_seed=SEED  # Same episodes for all trials - fair comparison
+                base_seed=SEED,  # Same episodes for all trials - fair comparison
+                custom_reward_function=custom_reward_function,
+                preprocess_func=preprocess_func,
+                windows=windows,
+                trading_fees=trading_fees,
+                borrow_interest_rate=borrow_interest_rate
             )
             logger.info(
                 f"Trial {trial.number}: Sharpe ratio: {sharpe_ratio:.4f}")
@@ -1094,11 +1216,15 @@ def run_optuna_optimization(number_of_trials=50):
     # Create study with better error handling
     study_db_path = f'sqlite:///optuna_studies/{RUN_ID}_study.db'
 
+    sampler_seed = int(hashlib.sha256(
+        RUN_ID.encode()).hexdigest(), 16) % (10**8),
+
     try:
         study = optuna.create_study(
             direction='maximize',
-            # TODO: Possibly use RUN_ID as seed, introduce randomness
-            sampler=TPESampler(seed=SEED),
+            # TODO: Possibly use RUN_ID as seed, introduce randomness, let's generate a new seed based on RUN_ID
+            # This allows for reproducibility while still allowing some variability
+            sampler=TPESampler(seed=sampler_seed),
             pruner=MedianPruner(
                 n_startup_trials=number_of_trials * 0.1,    # Increased for better baseline
                 n_warmup_steps=10,      # Increased for more stable pruning
@@ -1114,7 +1240,7 @@ def run_optuna_optimization(number_of_trials=50):
             f"Failed to create study with database: {e}. Creating in-memory study.")
         study = optuna.create_study(
             direction='maximize',
-            sampler=TPESampler(seed=SEED),
+            sampler=TPESampler(seed=sampler_seed),
             pruner=MedianPruner(
                 n_startup_trials=number_of_trials * 0.1,
                 n_warmup_steps=10,
