@@ -10,3 +10,4 @@ stockstats
 yfinance
 optuna-dashboard
 backtesting
+seaborn

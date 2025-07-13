@@ -13,3 +13,4 @@ optuna_trials/
 optuna_logs/
 *log
 *todo
+statistical-plot/
