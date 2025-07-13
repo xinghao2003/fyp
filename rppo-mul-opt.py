@@ -224,183 +224,188 @@ def create_preprocess_function(feature_config):
             # Check for NaN values
             used_columns = ['open', 'close', 'high', 'low', 'volume', 'macd', 'rsi', 'close_10_sma',
                             'close_10_ema', 'adx', 'boll_ub', 'boll_lb', 'boll', 'kdjk', 'kdjd', 'kdjj', 'atr']
+            used_columns = [f'norm_{col}' for col in used_columns]
             nan_counts = df[used_columns].isnull().sum()
             if nan_counts.any():
                 logger.warning(
                     f"NaN values found in columns: {nan_counts[nan_counts > 0].to_dict()}")
 
             # Basic price features (always included for trading)
-            if 'close' in df.columns:
-                if df['close'].isna().all():
-                    logger.error("Critical: 'close' column is entirely NaN!")
-                    raise ValueError("'close' column is entirely NaN")
-                df["feature_close"] = df["close"]
+            if 'norm_close' in df.columns:
+                if df['norm_close'].isna().all():
+                    logger.error(
+                        "Critical: 'norm_close' column is entirely NaN!")
+                    raise ValueError("'norm_close' column is entirely NaN")
+                df["feature_close"] = df["norm_close"]
             else:
-                logger.error("Critical: 'close' column not found in dataset!")
+                logger.error(
+                    "Critical: 'norm_close' column not found in dataset!")
                 raise ValueError(
-                    "'close' column is required but not found in dataset")
+                    "'norm_close' column is required but not found in dataset")
 
             # Optional features based on trial suggestions with validation
             if feature_config.get('use_volume', True):
-                if 'volume' in df.columns:
-                    if df['volume'].isna().all():
+                if 'norm_volume' in df.columns:
+                    if df['norm_volume'].isna().all():
                         logger.warning(
-                            "'volume' column is entirely NaN, skipping")
+                            "'norm_volume' column is entirely NaN, skipping")
                     else:
-                        df["feature_volume"] = df["volume"]
+                        df["feature_volume"] = df["norm_volume"]
                 else:
-                    logger.debug("'volume' column not found in dataset")
+                    logger.debug("'norm_volume' column not found in dataset")
 
             if feature_config.get('use_high', True):
-                if 'high' in df.columns:
-                    if df['high'].isna().all():
+                if 'norm_high' in df.columns:
+                    if df['norm_high'].isna().all():
                         logger.warning(
-                            "'high' column is entirely NaN, skipping")
+                            "'norm_high' column is entirely NaN, skipping")
                     else:
-                        df["feature_high"] = df["high"]
+                        df["feature_high"] = df["norm_high"]
                 else:
-                    logger.debug("'high' column not found in dataset")
+                    logger.debug("'norm_high' column not found in dataset")
 
             if feature_config.get('use_low', True):
-                if 'low' in df.columns:
-                    if df['low'].isna().all():
+                if 'norm_low' in df.columns:
+                    if df['norm_low'].isna().all():
                         logger.warning(
-                            "'low' column is entirely NaN, skipping")
+                            "'norm_low' column is entirely NaN, skipping")
                     else:
-                        df["feature_low"] = df["low"]
+                        df["feature_low"] = df["norm_low"]
                 else:
-                    logger.debug("'low' column not found in dataset")
+                    logger.debug("'norm_low' column not found in dataset")
 
             if feature_config.get('use_open', True):
-                if 'open' in df.columns:
-                    if df['open'].isna().all():
+                if 'norm_open' in df.columns:
+                    if df['norm_open'].isna().all():
                         logger.warning(
-                            "'open' column is entirely NaN, skipping")
+                            "'norm_open' column is entirely NaN, skipping")
                     else:
-                        df["feature_open"] = df["open"]
+                        df["feature_open"] = df["norm_open"]
                 else:
-                    logger.debug("'open' column not found in dataset")
+                    logger.debug("'norm_open' column not found in dataset")
 
             # Technical indicators with validation
             if feature_config.get('use_macd', True):
-                if 'macd' in df.columns:
-                    if df['macd'].isna().all():
+                if 'norm_macd' in df.columns:
+                    if df['norm_macd'].isna().all():
                         logger.warning(
-                            "'macd' column is entirely NaN, skipping")
+                            "'norm_macd' column is entirely NaN, skipping")
                     else:
-                        df["feature_macd"] = df["macd"]
+                        df["feature_macd"] = df["norm_macd"]
                 else:
-                    logger.debug("'macd' column not found in dataset")
+                    logger.debug("'norm_macd' column not found in dataset")
 
             if feature_config.get('use_rsi', False):
-                if 'rsi' in df.columns:
-                    if df['rsi'].isna().all():
+                if 'norm_rsi' in df.columns:
+                    if df['norm_rsi'].isna().all():
                         logger.warning(
-                            "'rsi' column is entirely NaN, skipping")
+                            "'norm_rsi' column is entirely NaN, skipping")
                     else:
-                        df["feature_rsi"] = df["rsi"]
+                        df["feature_rsi"] = df["norm_rsi"]
                 else:
-                    logger.debug("'rsi' column not found in dataset")
+                    logger.debug("'norm_rsi' column not found in dataset")
 
             if feature_config.get('use_sma', False):
-                if 'close_10_sma' in df.columns:
-                    if df['close_10_sma'].isna().all():
+                if 'norm_close_10_sma' in df.columns:
+                    if df['norm_close_10_sma'].isna().all():
                         logger.warning(
-                            "'close_10_sma' column is entirely NaN, skipping")
+                            "'norm_close_10_sma' column is entirely NaN, skipping")
                     else:
-                        df["feature_sma"] = df["close_10_sma"]
+                        df["feature_sma"] = df["norm_close_10_sma"]
                 else:
-                    logger.debug("'close_10_sma' column not found in dataset")
+                    logger.debug(
+                        "'norm_close_10_sma' column not found in dataset")
 
             if feature_config.get('use_ema', False):
-                if 'close_10_ema' in df.columns:
-                    if df['close_10_ema'].isna().all():
+                if 'norm_close_10_ema' in df.columns:
+                    if df['norm_close_10_ema'].isna().all():
                         logger.warning(
-                            "'close_10_ema' column is entirely NaN, skipping")
+                            "'norm_close_10_ema' column is entirely NaN, skipping")
                     else:
-                        df["feature_ema"] = df["close_10_ema"]
+                        df["feature_ema"] = df["norm_close_10_ema"]
                 else:
-                    logger.debug("'close_10_ema' column not found in dataset")
+                    logger.debug(
+                        "'norm_close_10_ema' column not found in dataset")
 
             if feature_config.get('use_adx', False):
-                if 'adx' in df.columns:
-                    if df['adx'].isna().all():
+                if 'norm_adx' in df.columns:
+                    if df['norm_adx'].isna().all():
                         logger.warning(
-                            "'adx' column is entirely NaN, skipping")
+                            "'norm_adx' column is entirely NaN, skipping")
                     else:
-                        df["feature_adx"] = df["adx"]
+                        df["feature_adx"] = df["norm_adx"]
                 else:
-                    logger.debug("'adx' column not found in dataset")
+                    logger.debug("'norm_adx' column not found in dataset")
 
             if feature_config.get('use_bb_upper', False):
-                if 'boll_ub' in df.columns:
-                    if df['boll_ub'].isna().all():
+                if 'norm_boll_ub' in df.columns:
+                    if df['norm_boll_ub'].isna().all():
                         logger.warning(
-                            "'boll_ub' column is entirely NaN, skipping")
+                            "'norm_boll_ub' column is entirely NaN, skipping")
                     else:
-                        df["feature_bb_upper"] = df["boll_ub"]
+                        df["feature_bb_upper"] = df["norm_boll_ub"]
                 else:
-                    logger.debug("'boll_ub' column not found in dataset")
+                    logger.debug("'norm_boll_ub' column not found in dataset")
 
             if feature_config.get('use_bb_lower', False):
-                if 'boll_lb' in df.columns:
-                    if df['boll_lb'].isna().all():
+                if 'norm_boll_lb' in df.columns:
+                    if df['norm_boll_lb'].isna().all():
                         logger.warning(
-                            "'boll_lb' column is entirely NaN, skipping")
+                            "'norm_boll_lb' column is entirely NaN, skipping")
                     else:
-                        df["feature_bb_lower"] = df["boll_lb"]
+                        df["feature_bb_lower"] = df["norm_boll_lb"]
                 else:
-                    logger.debug("'boll_lb' column not found in dataset")
+                    logger.debug("'norm_boll_lb' column not found in dataset")
 
             if feature_config.get('use_bb_middle', False):
-                if 'boll' in df.columns:
-                    if df['boll'].isna().all():
+                if 'norm_boll' in df.columns:
+                    if df['norm_boll'].isna().all():
                         logger.warning(
-                            "'boll' column is entirely NaN, skipping")
+                            "'norm_boll' column is entirely NaN, skipping")
                     else:
-                        df["feature_bb_middle"] = df["boll"]
+                        df["feature_bb_middle"] = df["norm_boll"]
                 else:
-                    logger.debug("'boll' column not found in dataset")
+                    logger.debug("'norm_boll' column not found in dataset")
 
             if feature_config.get('use_stoch_k', False):
-                if 'kdjk' in df.columns:
-                    if df['kdjk'].isna().all():
+                if 'norm_kdjk' in df.columns:
+                    if df['norm_kdjk'].isna().all():
                         logger.warning(
-                            "'kdjk' column is entirely NaN, skipping")
+                            "'norm_kdjk' column is entirely NaN, skipping")
                     else:
-                        df["feature_stoch_k"] = df["kdjk"]
+                        df["feature_stoch_k"] = df["norm_kdjk"]
                 else:
-                    logger.debug("'kdjk' column not found in dataset")
+                    logger.debug("'norm_kdjk' column not found in dataset")
 
             if feature_config.get('use_stoch_d', False):
-                if 'kdjd' in df.columns:
-                    if df['kdjd'].isna().all():
+                if 'norm_kdjd' in df.columns:
+                    if df['norm_kdjd'].isna().all():
                         logger.warning(
-                            "'kdjd' column is entirely NaN, skipping")
+                            "'norm_kdjd' column is entirely NaN, skipping")
                     else:
-                        df["feature_stoch_d"] = df["kdjd"]
+                        df["feature_stoch_d"] = df["norm_kdjd"]
                 else:
-                    logger.debug("'kdjd' column not found in dataset")
+                    logger.debug("'norm_kdjd' column not found in dataset")
 
             if feature_config.get('use_stoch_j', False):
-                if 'kdjj' in df.columns:
-                    if df['kdjj'].isna().all():
+                if 'norm_kdjj' in df.columns:
+                    if df['norm_kdjj'].isna().all():
                         logger.warning(
-                            "'kdjj' column is entirely NaN, skipping")
+                            "'norm_kdjj' column is entirely NaN, skipping")
                     else:
-                        df["feature_stoch_j"] = df["kdjj"]
+                        df["feature_stoch_j"] = df["norm_kdjj"]
                 else:
-                    logger.debug("'kdjj' column not found in dataset")
+                    logger.debug("'norm_kdjj' column not found in dataset")
 
             if feature_config.get('use_atr', False):
-                if 'atr' in df.columns:
-                    if df['atr'].isna().all():
+                if 'norm_atr' in df.columns:
+                    if df['norm_atr'].isna().all():
                         logger.warning(
-                            "'atr' column is entirely NaN, skipping")
+                            "'norm_atr' column is entirely NaN, skipping")
                     else:
-                        df["feature_atr"] = df["atr"]
+                        df["feature_atr"] = df["norm_atr"]
                 else:
-                    logger.debug("'atr' column not found in dataset")
+                    logger.debug("'norm_atr' column not found in dataset")
 
             # Validate that we have at least some features
             feature_columns = [
