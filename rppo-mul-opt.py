@@ -833,7 +833,7 @@ class OptunaPruningCallback(BaseCallback):
                         model=self.model,
                         eval_env=self.eval_env,
                         # Fewer episodes for faster pruning evaluation
-                        n_episodes=math.ceil(65 * 0.1),
+                        n_episodes=math.ceil(65 * 0.25),  # 25% of 65 episodes
                         base_seed=self.base_seed,  # Same episodes for all trials
                         custom_reward_function=self.custom_reward_function,
                         preprocess_func=self.preprocess_func,
@@ -1144,7 +1144,7 @@ def objective(trial):
             sharpe_ratio = evaluate_sharpe_ratio(
                 model=model,
                 eval_env=eval_env,
-                n_episodes=math.ceil(total_datasets * 0.2),  # 20% of datasets
+                n_episodes=math.ceil(total_datasets * 0.5),  # 50% of datasets
                 base_seed=SEED,  # Same episodes for all trials - fair comparison
                 custom_reward_function=custom_reward_function,
                 preprocess_func=preprocess_func,
