@@ -626,6 +626,10 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
         'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
     predictable_eval_env.add_metric(
         'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+    predictable_eval_env.add_metric(
+        'Reward',
+        lambda history: f"{np.sum(history['reward']):.4f}" if 'reward' in history.columns else "N/A"
+    )
 
     portfolio_values = []
     episode_returns = []
@@ -998,6 +1002,10 @@ def objective(trial):
                 'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
             train_env.add_metric(
                 'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+            train_env.add_metric(
+                'Reward',
+                lambda history: f"{np.sum(history['reward']):.4f}" if 'reward' in history.columns else "N/A"
+            )
 
             logger.info(
                 f"Trial {trial.number}: Resetting training environment...")
@@ -1039,6 +1047,10 @@ def objective(trial):
                 'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
             eval_env.add_metric(
                 'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+            eval_env.add_metric(
+                'Reward',
+                lambda history: f"{np.sum(history['reward']):.4f}" if 'reward' in history.columns else "N/A"
+            )
 
             logger.info(
                 f"Trial {trial.number}: Resetting evaluation environment...")
@@ -1352,6 +1364,10 @@ def run_optuna_optimization(number_of_trials=50):
         'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
     final_train_env.add_metric(
         'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+    final_train_env.add_metric(
+        'Reward',
+        lambda history: f"{np.sum(history['reward']):.4f}" if 'reward' in history.columns else "N/A"
+    )
 
     final_eval_env = gym.make('MultiDatasetTradingEnv',
                               dataset_dir='dataset/1d-2005/val/*.pkl',
@@ -1375,6 +1391,10 @@ def run_optuna_optimization(number_of_trials=50):
         'AnnRet', lambda history: f"{calculate_annualized_return(history) * 100:.2f}%")
     final_eval_env.add_metric(
         'Sharpe', lambda history: f"{calculate_sharpe_ratio(history):.2f}")
+    final_eval_env.add_metric(
+        'Reward',
+        lambda history: f"{np.sum(history['reward']):.4f}" if 'reward' in history.columns else "N/A"
+    )
 
     final_train_env.reset(seed=SEED)
     final_eval_env.reset(seed=SEED)
