@@ -18,6 +18,8 @@ import sys
 import math
 import hashlib
 import glob
+import argparse
+import traceback
 
 from gym_trading_env.environments import MultiDatasetTradingEnv
 
@@ -238,9 +240,22 @@ def calculate_sharpe_ratio(history, risk_free_rate=0.0404):
     return annualized_sharpe
 
 
-# Generate unique timestamp-based ID for this run
-RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
-print(f"Please record this ID for tracking: {RUN_ID}")
+# Generate unique timestamp-based ID for this run, or use one from args
+parser = argparse.ArgumentParser(
+    description="Train a trading agent with Optuna.")
+parser.add_argument('--run-id', type=str,
+                    help='Specify a run ID to continue a previous optimization.')
+# Use parse_known_args to avoid issues with other args if any, especially in notebooks
+args, _ = parser.parse_known_args()
+
+if args.run_id:
+    RUN_ID = args.run_id
+    print(f"Continuing optimization with provided RUN_ID: {RUN_ID}")
+else:
+    RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
+    print(
+        f"Starting new optimization. Please record this ID for tracking: {RUN_ID}")
+
 # Configure logging with more detailed format
 os.makedirs('optuna_logs', exist_ok=True)
 logging.basicConfig(
@@ -824,40 +839,40 @@ class OptunaPruningCallback(BaseCallback):
         # This callback is called after each evaluation by EvalCallback
         # We'll evaluate using Sharpe ratio for pruning decisions
         if hasattr(self.parent, 'n_calls') and self.parent.n_calls > 0:
+            # The step is the total number of timesteps, which aligns with the pruner's parameters
+            step = self.parent.n_calls
             logger.info(
-                f"Pruning: Evaluating trial {self.trial.number} at step {self.parent.n_calls}")
-            # Only evaluate for pruning every few evaluations to save computation
-            if self.parent.n_calls % 2 == 0:  # Every 2nd evaluation
-                try:
+                f"Pruning: Evaluating trial {self.trial.number} at step {step}")
+            try:
+                # Quick Sharpe ratio evaluation for pruning (fewer episodes)
+                # Use consistent base seed for fair comparison across all trials
+                sharpe_ratio = evaluate_sharpe_ratio(
+                    model=self.model,
+                    eval_env=self.eval_env,
+                    n_episodes=math.ceil(65 * 0.25),  # 25% of 65 episodes
+                    base_seed=self.base_seed,  # Same episodes for all trials
+                    custom_reward_function=self.custom_reward_function,
+                    preprocess_func=self.preprocess_func,
+                    windows=self.windows,
+                    trading_fees=self.trading_fees,
+                    borrow_interest_rate=self.borrow_interest_rate
+                )
+
+                self.trial.report(sharpe_ratio, step)
+
+                if self.trial.should_prune():
                     logger.info(
-                        f"Pruning: Evaluating trial {self.trial.number} for pruning at step {self.parent.n_calls}")
-                    # Quick Sharpe ratio evaluation for pruning (fewer episodes)
-                    # Use consistent base seed for fair comparison across all trials
-                    sharpe_ratio = evaluate_sharpe_ratio(
-                        model=self.model,
-                        eval_env=self.eval_env,
-                        # Fewer episodes for faster pruning evaluation
-                        n_episodes=math.ceil(65 * 0.25),  # 25% of 65 episodes
-                        base_seed=self.base_seed,  # Same episodes for all trials
-                        custom_reward_function=self.custom_reward_function,
-                        preprocess_func=self.preprocess_func,
-                        windows=self.windows,
-                        trading_fees=self.trading_fees,
-                        borrow_interest_rate=self.borrow_interest_rate
-                    )
+                        f"Trial {self.trial.number} pruned at step {step} with Sharpe ratio {sharpe_ratio:.4f}")
+                    raise optuna.TrialPruned()
 
-                    # Optuna expects steps to be monotonically increasing
-                    step = self.parent.n_calls
-
-                    self.trial.report(sharpe_ratio, step)
-
-                    if self.trial.should_prune():
-                        raise optuna.TrialPruned()
-
-                except Exception as e:
-                    # If evaluation fails, don't prune (continue training)
-                    logger.warning(f"Pruning evaluation failed: {e}")
-                    pass
+            except optuna.TrialPruned:
+                # Re-raise TrialPruned exceptions - they should propagate
+                raise
+            except Exception as e:
+                # If evaluation fails, don't prune (continue training)
+                logger.warning(f"Pruning evaluation failed: {str(e)}")
+                logger.warning(f"Full traceback:\n{traceback.format_exc()}")
+                # Don't raise the exception, just continue training
 
         return True
 
@@ -1255,6 +1270,16 @@ def run_optuna_optimization(number_of_trials=50):
         f"Creating Optuna study with database: {study_db_path} and sampler seed: {sampler_seed}")
 
     try:
+        trial_total_timesteps = 2000000
+        total_datasets = 65
+
+        # Define pruning schedule based on total timesteps
+        pruning_warmup_steps = int(trial_total_timesteps * 0.20)  # 20% warmup
+        pruning_interval_steps = int(
+            trial_total_timesteps * 0.05)  # 5% interval
+        logger.info(
+            f"Pruning schedule: warmup_steps={pruning_warmup_steps}, interval_steps={pruning_interval_steps}")
+
         study = optuna.create_study(
             direction='maximize',
             # TODO: Possibly use RUN_ID as seed, introduce randomness, let's generate a new seed based on RUN_ID
@@ -1262,8 +1287,8 @@ def run_optuna_optimization(number_of_trials=50):
             sampler=TPESampler(seed=sampler_seed),
             pruner=MedianPruner(
                 n_startup_trials=number_of_trials * 0.1,    # Increased for better baseline
-                n_warmup_steps=10,      # Increased for more stable pruning
-                interval_steps=5        # Check every 5 evaluations
+                n_warmup_steps=pruning_warmup_steps,      # Increased for more stable pruning
+                interval_steps=pruning_interval_steps        # Check every 5 evaluations
             ),
             # Self define the RUN_ID for resume
             study_name=f"ppo_trading_{RUN_ID}",
@@ -1278,8 +1303,8 @@ def run_optuna_optimization(number_of_trials=50):
             sampler=TPESampler(seed=sampler_seed),
             pruner=MedianPruner(
                 n_startup_trials=number_of_trials * 0.1,
-                n_warmup_steps=10,
-                interval_steps=5
+                n_warmup_steps=pruning_warmup_steps,
+                interval_steps=pruning_interval_steps
             ),
             study_name=f"ppo_trading_{RUN_ID}",
         )
