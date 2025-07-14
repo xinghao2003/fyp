@@ -1152,6 +1152,10 @@ def objective(trial):
                         callback=eval_callback)
             logger.info(
                 f"Trial {trial.number}: Training completed successfully")
+        except optuna.TrialPruned:
+            # Handle pruning separately - this is expected behavior, not an error
+            logger.info(f"Trial {trial.number}: Pruned during training")
+            raise  # Re-raise to be caught by the outer try-except
         except Exception as e:
             logger.error(f"Trial {trial.number}: Training failed")
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
