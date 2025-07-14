@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 
 
-def process_csv_files(folder_path):
+def process_csv_files(folder_path, start_date='2005-01-01', end_date='2025-06-30'):
     """
     Process all CSV files in the specified folder and remove records before 2005
     """
@@ -40,8 +40,8 @@ def process_csv_files(folder_path):
             df['date'] = pd.to_datetime(df['date'], utc=True)
 
             # Create datetime objects for comparison
-            cutoff_start = pd.to_datetime('2005-01-01', utc=True)
-            cutoff_end = pd.to_datetime('2025-06-30', utc=True)
+            cutoff_start = pd.to_datetime(start_date, utc=True)
+            cutoff_end = pd.to_datetime(end_date, utc=True)
 
             # Filter records from 2005-01-01 to 2025-06-30 (inclusive)
             df_filtered = df[(df['date'] >= cutoff_start)
@@ -62,11 +62,12 @@ def process_csv_files(folder_path):
 
 if __name__ == "__main__":
     # Set the folder path - change this to your actual folder path
-    folder_path = r"1d-2005"
+    folder_path = r"1d-2015"
 
     # If no path provided, use current directory
     if not folder_path:
         folder_path = "."
 
-    process_csv_files(folder_path)
+    process_csv_files(folder_path, start_date='2015-01-01',
+                      end_date='2025-06-30')
     print("Processing complete!")

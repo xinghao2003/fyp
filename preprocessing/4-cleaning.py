@@ -34,7 +34,7 @@ def clean_first_record(csv_path):
 
 
 def main():
-    root_folder = r"1d-2005"
+    root_folder = r"1d-2015"
     changed_files = []
     for dirpath, _, filenames in os.walk(root_folder):
         for fname in filenames:

@@ -160,15 +160,17 @@ def download_aapl_data(period="1y", interval="1h", filename="AAPL_USD-Hourly.csv
 
 if __name__ == "__main__":
     # Load symbols from tickers.json
+    
+    file = 'tickers-backtest.json'
 
     try:
-        with open('tickers.json', 'r') as f:
+        with open(file, 'r') as f:
             symbols_by_category = json.load(f)
     except FileNotFoundError:
-        print("Error: tickers.json file not found!")
+        print(f"Error: {file} file not found!")
         exit(1)
     except json.JSONDecodeError:
-        print("Error: Invalid JSON format in tickers.json!")
+        print(f"Error: Invalid JSON format in {file}!")
         exit(1)
 
     # Flatten all symbols into a single list

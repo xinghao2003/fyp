@@ -80,7 +80,7 @@ def preprocess_hybrid(df: pd.DataFrame) -> pd.DataFrame:
     norm_cols = [col for col in df.columns if col.startswith('norm_')]
 
     # Handle NaNs in normalized columns only by forward-filling them.
-    df[norm_cols] = df[norm_cols].fillna(method='ffill')
+    df[norm_cols] = df[norm_cols].ffill()
 
     # Replace any infinite values in normalized columns only
     df[norm_cols] = df[norm_cols].replace([np.inf, -np.inf], 0.0)
@@ -91,7 +91,7 @@ def preprocess_hybrid(df: pd.DataFrame) -> pd.DataFrame:
 # --- Usage Example ---
 if __name__ == '__main__':
     # Folder containing CSV files (modify this path as needed)
-    folder_path = r"1d-2005"
+    folder_path = r"1d-2015"
 
     # Find all CSV files recursively in the folder and subfolders
     csv_pattern = os.path.join(folder_path, "**", "*.csv")

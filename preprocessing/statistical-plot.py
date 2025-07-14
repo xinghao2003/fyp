@@ -147,7 +147,7 @@ def plot_statistical_distributions(stats_df, column, output_dir, save_plots=True
 
 def main():
     # Specify the folders and columns to process
-    csv_folders = [r"1d-2005\train", "1d-2005\test", r"1d-2005\val"]
+    csv_folders = [r"1d-2015"]
     columns = ['open', 'close', 'high', 'low', 'volume', 'macd', 'rsi', 'close_10_sma',
                'close_10_ema', 'adx', 'boll_ub', 'boll_lb', 'boll', 'kdjk', 'kdjd', 'kdjj', 'atr']
     norm_columns = [f'norm_{col}' for col in columns]

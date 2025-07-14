@@ -1,0 +1,37 @@
+{
+    "U.S. Equity Benchmarks": [
+        "VTI",
+        "RSP"
+    ],
+    "U.S. Sector / Thematic ETFs": [
+        "VGT",
+        "IBB"
+    ],
+    "Large-Cap Single Stocks": [
+        "BRK-B",
+        "UNP"
+    ],
+    "Fixed-Income & Credit": [
+        "AGG",
+        "JNK"
+    ],
+    "Commodities": [
+        "IAU",
+        "DBA"
+    ],
+    "Volatility & Tail-Risk": [
+        "UVXY"
+    ],
+    "Currencies (FX)": [
+        "USDCHF=X",
+        "USDCAD=X"
+    ],
+    "Crypto": [
+        "XRP-USD",
+        "AVAX-USD"
+    ],
+    "Non-U.S. Large Caps / ADRs": [
+        "ASML",
+        "BHP"
+    ]
+}
