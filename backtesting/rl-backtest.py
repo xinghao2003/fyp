@@ -299,6 +299,19 @@ def run_backtest():
         logger.error(f"Failed to load data: {e}")
         raise
 
+    # Convert the 'date' column to datetime objects
+    data['date'] = pd.to_datetime(data['date'])
+    logger.info("Converted 'date' column to datetime.")
+
+    # Remove timezone information to avoid numpy datetime64 warnings
+    if data['date'].dt.tz is not None:
+        data['date'] = data['date'].dt.tz_localize(None)
+        logger.info("Removed timezone info from 'date' column.")
+
+    # Set the date as the index
+    data.set_index('date', inplace=True)
+    logger.info("Set 'date' as index.")
+
     # `backtesting.py` expects column names in TitleCase.
     original_columns = list(data.columns)
     data.rename(columns={
