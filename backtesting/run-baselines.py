@@ -124,7 +124,7 @@ def process_csv_file(csv_file_path, folder_name):
 
                 # Instantiate the Backtest object with your data and the strategy
                 bt = Backtest(data, strategy_class,
-                              cash=10000, commission=.002)
+                              cash=100000, commission=.002)
 
                 # Run the backtest
                 stats = bt.run()
