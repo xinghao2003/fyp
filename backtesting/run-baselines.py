@@ -191,7 +191,8 @@ def save_backtest_results(stats, bt, file_path, folder_name, strategy_name):
     """
     # Extract filename without extension for folder naming
     base_name = os.path.splitext(os.path.basename(file_path))[0]
-    output_dir = os.path.join("result", folder_name, base_name, strategy_name)
+    output_dir = os.path.join("result", "baseline",
+                              folder_name, base_name, strategy_name)
     os.makedirs(output_dir, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -284,7 +285,7 @@ def save_summary_results(results, folder_name):
     """
     try:
         # Create summary directory: result/folder_path/
-        output_dir = os.path.join("result", folder_name)
+        output_dir = os.path.join("result", "baseline", folder_name)
         os.makedirs(output_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -352,7 +353,7 @@ def save_summary_results(results, folder_name):
 def create_strategy_comparison_summary(results, folder_name, timestamp, all_stats):
     """Create a comparison summary across all strategies and files."""
     try:
-        output_dir = os.path.join("result", folder_name)
+        output_dir = os.path.join("result", "baseline", folder_name)
 
         comparison_data = []
         for result in results:
