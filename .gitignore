@@ -16,3 +16,4 @@ optuna_logs/
 statistical-plot/
 result/
 plots/
+*png

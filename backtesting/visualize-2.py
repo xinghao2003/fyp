@@ -49,11 +49,36 @@ class ModelComparisonVisualizer:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce')
 
+                # Handle Buy & Hold specific metrics
+                df = self._handle_buy_hold_metrics(df, strategy)
+
                 all_data.append(df)
             except Exception as e:
                 print(f"Error reading {csv_file}: {e}")
 
         return pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
+
+    def _handle_buy_hold_metrics(self, df, strategy):
+        """Handle missing metrics for Buy & Hold strategy"""
+        if strategy == 'Buy & Hold':
+            # Fill trading-specific metrics that don't apply to Buy & Hold
+            trading_metrics = {
+                # Buy & Hold is always "winning" if return > 0
+                'Win Rate [%]': 100.0,
+                '# Trades': 1,  # Conceptually one trade (buy and hold)
+                'Profit Factor': np.nan,  # Not meaningful for Buy & Hold
+                'SQN': np.nan,  # System Quality Number not applicable
+                'Avg. Trade [%]': df['Return [%]'].iloc[0] if not df.empty else np.nan,
+                'Best Trade [%]': df['Return [%]'].iloc[0] if not df.empty else np.nan,
+                'Worst Trade [%]': df['Return [%]'].iloc[0] if not df.empty else np.nan,
+                'Expectancy [%]': df['Return [%]'].iloc[0] if not df.empty else np.nan
+            }
+
+            for metric, value in trading_metrics.items():
+                if metric in df.columns and df[metric].isna().all():
+                    df[metric] = value
+
+        return df
 
     def _extract_strategy_name(self, filename):
         """Extract strategy name from CSV filename"""
@@ -82,16 +107,57 @@ class ModelComparisonVisualizer:
         else:
             return base_name.split('_')[0]
 
+    def _get_cleaned_data(self, df, required_metrics, strategy_specific=True):
+        """Get cleaned data with strategy-specific handling"""
+        if not strategy_specific:
+            # For visualizations that need all strategies, use more flexible filtering
+            df_clean = df.copy()
+
+            # Only require core metrics that all strategies should have
+            core_metrics = ['Return [%]', 'Strategy', 'Symbol']
+            available_core = [m for m in core_metrics if m in df.columns]
+            df_clean = df_clean.dropna(subset=available_core)
+
+            # For other metrics, fill NaN with strategy-appropriate values
+            for metric in required_metrics:
+                if metric in df_clean.columns:
+                    # Fill NaN values based on strategy type
+                    for strategy in df_clean['Strategy'].unique():
+                        mask = df_clean['Strategy'] == strategy
+                        if strategy == 'Buy & Hold' and df_clean.loc[mask, metric].isna().any():
+                            if 'Win Rate' in metric:
+                                df_clean.loc[mask, metric] = df_clean.loc[mask, metric].fillna(
+                                    100.0)
+                            elif '# Trades' in metric:
+                                df_clean.loc[mask, metric] = df_clean.loc[mask, metric].fillna(
+                                    1)
+                            elif 'Profit Factor' in metric or 'SQN' in metric:
+                                # Keep as NaN for Buy & Hold for these metrics
+                                continue
+                            else:
+                                # For other metrics, use median of non-Buy & Hold strategies
+                                other_strategies_median = df_clean[df_clean['Strategy'] != 'Buy & Hold'][metric].median(
+                                )
+                                if pd.notna(other_strategies_median):
+                                    df_clean.loc[mask, metric] = df_clean.loc[mask, metric].fillna(
+                                        other_strategies_median)
+
+            return df_clean
+        else:
+            # Original behavior for strategy-specific analysis
+            return df.dropna(subset=required_metrics)
+
     def create_performance_radar_chart(self, df, metrics=None, save_path=None):
         """
         Create radar chart comparing strategies across multiple metrics
         """
         if metrics is None:
-            metrics = ['Sharpe Ratio', 'Return [%]', 'Win Rate [%]',
-                       'Profit Factor', 'Calmar Ratio']
+            # Use metrics that are meaningful for all strategies including Buy & Hold
+            metrics = ['Sharpe Ratio', 'Return [%]', 'Calmar Ratio',
+                       'Max. Drawdown [%]', 'Volatility (Ann.) [%]']
 
-        # Filter out rows with missing data for the selected metrics
-        df_clean = df.dropna(subset=metrics)
+        # Use flexible data cleaning
+        df_clean = self._get_cleaned_data(df, metrics, strategy_specific=False)
 
         if df_clean.empty:
             print("No data available for radar chart after cleaning")
@@ -99,6 +165,14 @@ class ModelComparisonVisualizer:
 
         # Aggregate by strategy (mean across all symbols)
         strategy_means = df_clean.groupby('Strategy')[metrics].mean()
+
+        # Remove strategies with too many NaN values
+        strategy_means = strategy_means.dropna(thresh=len(
+            metrics)*0.6)  # Require at least 60% of metrics
+
+        if strategy_means.empty:
+            print("No strategies have sufficient data for radar chart")
+            return None
 
         # Normalize metrics to 0-1 scale for radar chart
         normalized_data = strategy_means.copy()
@@ -210,7 +284,11 @@ class ModelComparisonVisualizer:
             print(f"Metric '{metric}' not found in data")
             return None
 
-        df_clean = df.dropna(subset=[metric])
+        # Use more flexible filtering for heatmap
+        df_clean = df.copy()
+
+        # Only remove rows where the specific metric AND core identifiers are missing
+        df_clean = df_clean.dropna(subset=[metric, 'Strategy', 'Symbol'])
 
         if df_clean.empty:
             print(f"No data available for {metric} heatmap after cleaning")
@@ -218,6 +296,10 @@ class ModelComparisonVisualizer:
 
         pivot_df = df_clean.pivot(
             index='Symbol', columns='Strategy', values=metric)
+
+        # Fill any remaining NaN values for better visualization
+        # You might want to comment this out if you prefer to show NaN as blank
+        # pivot_df = pivot_df.fillna(0)
 
         fig, ax = plt.subplots(figsize=(14, 8))
 
@@ -244,8 +326,9 @@ class ModelComparisonVisualizer:
         Create grouped bar chart for multiple metrics comparison
         """
         if metrics is None:
-            metrics = ['Return [%]', 'Sharpe Ratio',
-                       'Win Rate [%]', 'Max. Drawdown [%]']
+            # Include both core and trading-specific metrics
+            metrics = ['Return [%]', 'Sharpe Ratio', 'Max. Drawdown [%]', 'Volatility (Ann.) [%]',
+                       'Win Rate [%]', 'Profit Factor', '# Trades', 'Expectancy [%]']
 
         # Filter metrics that exist in the dataframe
         available_metrics = [m for m in metrics if m in df.columns]
@@ -254,13 +337,28 @@ class ModelComparisonVisualizer:
             print("None of the specified metrics are available in the data")
             return None
 
-        df_clean = df.dropna(subset=available_metrics)
+        # Use flexible data cleaning
+        df_clean = self._get_cleaned_data(
+            df, available_metrics, strategy_specific=False)
 
         if df_clean.empty:
             print("No data available for metric comparison after cleaning")
             return None
 
+        # Create individual plots for each metric (with strategy filtering per metric)
+        individual_figs = []
+        for metric in available_metrics:
+            individual_fig = self._create_individual_metric_plot(
+                df_clean, metric, save_path)
+            if individual_fig:
+                individual_figs.append(individual_fig)
+
+        # For the combined subplot, prepare data for each metric separately
         strategy_means = df_clean.groupby('Strategy')[available_metrics].mean()
+
+        # Only include strategies that have data for at least half of the metrics
+        strategy_means = strategy_means.dropna(
+            thresh=len(available_metrics)*0.3)  # Reduced threshold to accommodate Buy & Hold
 
         # Create subplots based on available metrics
         n_metrics = len(available_metrics)
@@ -280,8 +378,19 @@ class ModelComparisonVisualizer:
             if ax is None:
                 break
 
+            # Filter strategies for trading-specific metrics
+            metric_data = self._get_metric_data_for_subplot(df_clean, metric)
+
+            if metric_data.empty:
+                ax.text(0.5, 0.5, f'No data available\nfor {metric}',
+                        ha='center', va='center', transform=ax.transAxes,
+                        fontsize=12, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
+                ax.set_title(f'{metric} by Strategy',
+                             fontsize=12, fontweight='bold')
+                continue
+
             # Sort strategies by performance for this metric
-            sorted_data = strategy_means[metric].sort_values(ascending=False)
+            sorted_data = metric_data.sort_values(ascending=False)
 
             bars = ax.bar(range(len(sorted_data)), sorted_data.values,
                           color=[self.colors[j % len(self.colors)] for j in range(len(sorted_data))])
@@ -311,52 +420,167 @@ class ModelComparisonVisualizer:
             plt.savefig(save_path, dpi=self.dpi, bbox_inches='tight')
         plt.show()
 
-        return fig
+        return fig, individual_figs
+
+    def _get_metric_data_for_subplot(self, df_clean, metric):
+        """Get cleaned metric data, filtering out strategies with no meaningful data for specific metrics"""
+        # Trading-specific metrics where Buy & Hold should be excluded
+        trading_specific_metrics = [
+            'Win Rate [%]', 'Profit Factor', '# Trades', 'Expectancy [%]', 'SQN']
+
+        metric_data = df_clean.groupby('Strategy')[metric].mean()
+
+        if metric in trading_specific_metrics:
+            # For trading-specific metrics, exclude Buy & Hold and strategies with NaN values
+            metric_data = metric_data.dropna()
+            if 'Buy & Hold' in metric_data.index:
+                metric_data = metric_data.drop('Buy & Hold')
+        else:
+            # For other metrics, just drop NaN values
+            metric_data = metric_data.dropna()
+
+        return metric_data
+
+    def _create_individual_metric_plot(self, df_clean, metric, base_save_path=None):
+        """
+        Create individual plot for a single metric
+        """
+        try:
+            # Get metric data with appropriate strategy filtering
+            metric_data = self._get_metric_data_for_subplot(df_clean, metric)
+
+            if metric_data.empty:
+                print(f"No data available for individual plot of {metric}")
+                return None
+
+            # Sort strategies by performance for this metric
+            sorted_data = metric_data.sort_values(ascending=False)
+
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+            bars = ax.bar(range(len(sorted_data)), sorted_data.values,
+                          color=[self.colors[j % len(self.colors)] for j in range(len(sorted_data))])
+
+            ax.set_title(f'{metric} Comparison Across Strategies',
+                         fontsize=14, fontweight='bold', pad=20)
+            ax.set_ylabel(metric, fontsize=12)
+            ax.set_xlabel('Strategy', fontsize=12)
+            ax.set_xticks(range(len(sorted_data)))
+            ax.set_xticklabels(sorted_data.index, rotation=45, ha='right')
+
+            # Add value labels on bars
+            for bar, value in zip(bars, sorted_data.values):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                        f'{value:.2f}', ha='center', va='bottom', fontsize=10)
+
+            # Add grid for better readability
+            ax.grid(True, alpha=0.3, axis='y')
+
+            # Highlight best performing strategy
+            best_idx = 0  # Already sorted in descending order
+            bars[best_idx].set_edgecolor('gold')
+            bars[best_idx].set_linewidth(3)
+
+            # Add note for trading-specific metrics
+            trading_specific_metrics = [
+                'Win Rate [%]', 'Profit Factor', '# Trades', 'Expectancy [%]', 'SQN']
+            if metric in trading_specific_metrics:
+                ax.text(0.02, 0.98, 'Note: Buy & Hold excluded for this metric',
+                        transform=ax.transAxes, fontsize=9,
+                        verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.7))
+
+            plt.tight_layout()
+
+            # Save individual plot
+            if base_save_path:
+                # Create individual filename
+                metric_clean = metric.replace('[%]', '').replace(
+                    '(', '').replace(')', '').replace(' ', '_').replace('.', '').replace('#', 'num')
+                individual_save_path = base_save_path.replace(
+                    '.png', f'_{metric_clean.lower()}.png')
+                plt.savefig(individual_save_path,
+                            dpi=self.dpi, bbox_inches='tight')
+                print(f"Saved individual plot: {individual_save_path}")
+
+            plt.show()
+            return fig
+
+        except Exception as e:
+            print(f"Error creating individual plot for {metric}: {e}")
+            return None
 
     def create_drawdown_comparison(self, df, save_path=None):
         """
         Create drawdown comparison visualization
         """
         required_cols = ['Max. Drawdown [%]', 'Max. Drawdown Duration']
-        df_clean = df.dropna(subset=required_cols)
+
+        # Use more flexible data cleaning for drawdown comparison
+        df_clean = self._get_cleaned_data(
+            df, required_cols, strategy_specific=False)
 
         if df_clean.empty:
             print("No data available for drawdown comparison after cleaning")
             return None
 
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        # Check if we have the required columns after cleaning
+        available_cols = [
+            col for col in required_cols if col in df_clean.columns and not df_clean[col].isna().all()]
+
+        if not available_cols:
+            print("No drawdown data available after cleaning")
+            return None
+
+        fig_width = 16 if len(available_cols) == 2 else 8
+        fig, axes = plt.subplots(
+            1, len(available_cols), figsize=(fig_width, 6))
+
+        if len(available_cols) == 1:
+            axes = [axes]
+
+        plot_idx = 0
 
         # Max Drawdown comparison
-        drawdown_data = df_clean.groupby(
-            'Strategy')['Max. Drawdown [%]'].mean().sort_values()
-        bars1 = ax1.barh(range(len(drawdown_data)), drawdown_data.values,
-                         color=[self.colors[i % len(self.colors)] for i in range(len(drawdown_data))])
-        ax1.set_title('Maximum Drawdown by Strategy',
-                      fontsize=12, fontweight='bold')
-        ax1.set_xlabel('Max Drawdown [%]', fontsize=10)
-        ax1.set_yticks(range(len(drawdown_data)))
-        ax1.set_yticklabels(drawdown_data.index)
+        if 'Max. Drawdown [%]' in available_cols:
+            ax = axes[plot_idx]
+            drawdown_data = df_clean.groupby(
+                'Strategy')['Max. Drawdown [%]'].mean().dropna().sort_values()
 
-        # Add value labels
-        for bar, value in zip(bars1, drawdown_data.values):
-            ax1.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height()/2,
-                     f'{value:.1f}%', ha='left', va='center', fontsize=9)
+            if not drawdown_data.empty:
+                bars = ax.barh(range(len(drawdown_data)), drawdown_data.values,
+                               color=[self.colors[i % len(self.colors)] for i in range(len(drawdown_data))])
+                ax.set_title('Maximum Drawdown by Strategy',
+                             fontsize=12, fontweight='bold')
+                ax.set_xlabel('Max Drawdown [%]', fontsize=10)
+                ax.set_yticks(range(len(drawdown_data)))
+                ax.set_yticklabels(drawdown_data.index)
+
+                # Add value labels
+                for bar, value in zip(bars, drawdown_data.values):
+                    ax.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height()/2,
+                            f'{value:.1f}%', ha='left', va='center', fontsize=9)
+            plot_idx += 1
 
         # Drawdown Duration comparison
-        duration_data = df_clean.groupby('Strategy')[
-            'Max. Drawdown Duration'].mean().sort_values()
-        bars2 = ax2.barh(range(len(duration_data)), duration_data.values,
-                         color=[self.colors[i % len(self.colors)] for i in range(len(duration_data))])
-        ax2.set_title('Max Drawdown Duration by Strategy',
-                      fontsize=12, fontweight='bold')
-        ax2.set_xlabel('Duration (Days)', fontsize=10)
-        ax2.set_yticks(range(len(duration_data)))
-        ax2.set_yticklabels(duration_data.index)
+        if 'Max. Drawdown Duration' in available_cols:
+            ax = axes[plot_idx] if len(available_cols) > 1 else axes[0]
+            duration_data = df_clean.groupby(
+                'Strategy')['Max. Drawdown Duration'].mean().dropna().sort_values()
 
-        # Add value labels
-        for bar, value in zip(bars2, duration_data.values):
-            ax2.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2,
-                     f'{value:.0f}', ha='left', va='center', fontsize=9)
+            if not duration_data.empty:
+                bars = ax.barh(range(len(duration_data)), duration_data.values,
+                               color=[self.colors[i % len(self.colors)] for i in range(len(duration_data))])
+                ax.set_title('Max Drawdown Duration by Strategy',
+                             fontsize=12, fontweight='bold')
+                ax.set_xlabel('Duration (Days)', fontsize=10)
+                ax.set_yticks(range(len(duration_data)))
+                ax.set_yticklabels(duration_data.index)
+
+                # Add value labels
+                for bar, value in zip(bars, duration_data.values):
+                    ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2,
+                            f'{value:.0f}', ha='left', va='center', fontsize=9)
 
         plt.tight_layout()
         if save_path:
@@ -375,7 +599,9 @@ class ModelComparisonVisualizer:
             print("Return [%] column not found for statistical testing")
             return None, None
 
-        df_clean = df.dropna(subset=['Return [%]'])
+        # Use core metric cleaning
+        df_clean = self._get_cleaned_data(
+            df, ['Return [%]'], strategy_specific=False)
 
         if df_clean.empty:
             print("No return data available for statistical testing")
@@ -451,44 +677,59 @@ class ModelComparisonVisualizer:
         """
         Create a comprehensive summary table for the report
         """
-        key_metrics = ['Return [%]', 'Sharpe Ratio', 'Max. Drawdown [%]',
-                       'Win Rate [%]', 'Profit Factor', 'Calmar Ratio']
+        # Separate metrics by importance for different strategy types
+        core_metrics = ['Return [%]', 'Sharpe Ratio',
+                        'Max. Drawdown [%]', 'Volatility (Ann.) [%]']
+        trading_metrics = ['Win Rate [%]', 'Profit Factor', '# Trades']
 
         # Filter metrics that exist in the dataframe
-        available_metrics = [m for m in key_metrics if m in df.columns]
+        available_core = [m for m in core_metrics if m in df.columns]
+        available_trading = [m for m in trading_metrics if m in df.columns]
 
-        if not available_metrics:
-            print("None of the key metrics are available in the data")
+        if not available_core:
+            print("None of the core metrics are available in the data")
             return None
 
-        df_clean = df.dropna(subset=available_metrics)
+        # Use flexible data cleaning
+        df_clean = self._get_cleaned_data(
+            df, available_core, strategy_specific=False)
 
         if df_clean.empty:
             print("No data available for summary table after cleaning")
             return None
 
-        summary = df_clean.groupby('Strategy')[available_metrics].agg([
-            'mean', 'std']).round(3)
+        # Create summary for core metrics (all strategies)
+        all_metrics = available_core + available_trading
+        summary = df_clean.groupby('Strategy')[all_metrics].agg(
+            ['mean', 'std', 'count']).round(3)
 
         # Flatten column names
         summary.columns = [
             f'{metric}_{stat}' for metric, stat in summary.columns]
 
-        # Add ranking for each metric
-        for metric in key_metrics:
-            if 'Drawdown' in metric:  # Lower is better for drawdown
-                summary[f'{metric}_rank'] = summary[f'{metric}_mean'].rank()
-            else:  # Higher is better for other metrics
-                summary[f'{metric}_rank'] = summary[f'{metric}_mean'].rank(
-                    ascending=False)
+        # Add ranking for each core metric (only rank where we have sufficient data)
+        for metric in available_core:
+            count_col = f'{metric}_count'
+            if count_col in summary.columns:
+                # Only rank strategies that have data for this metric
+                valid_mask = summary[count_col] > 0
+                if 'Drawdown' in metric:  # Lower is better for drawdown
+                    summary.loc[valid_mask,
+                                f'{metric}_rank'] = summary.loc[valid_mask, f'{metric}_mean'].rank()
+                else:  # Higher is better for other metrics
+                    summary.loc[valid_mask, f'{metric}_rank'] = summary.loc[valid_mask, f'{metric}_mean'].rank(
+                        ascending=False)
 
-        # Calculate overall score (average rank)
-        rank_columns = [col for col in summary.columns if '_rank' in col]
-        summary['Overall_Rank'] = summary[rank_columns].mean(axis=1)
-        summary['Overall_Score'] = summary['Overall_Rank'].rank()
+        # Calculate overall score (average rank) only for core metrics
+        rank_columns = [col for col in summary.columns if '_rank' in col and any(
+            core in col for core in available_core)]
+        if rank_columns:
+            summary['Overall_Rank'] = summary[rank_columns].mean(axis=1)
+            summary['Overall_Score'] = summary['Overall_Rank'].rank()
 
         print("COMPREHENSIVE STRATEGY COMPARISON SUMMARY")
         print("="*60)
+        print("Note: Buy & Hold may show NaN for trading-specific metrics")
         print(summary.to_string())
 
         if save_path:
@@ -562,8 +803,10 @@ if __name__ == "__main__":
 
             # 4. Metric comparison bars
             try:
-                viz.create_metric_comparison_bars(
+                combined_fig, individual_figs = viz.create_metric_comparison_bars(
                     df, save_path="metric_comparison.png")
+                print(
+                    f"Created combined metric comparison and {len(individual_figs)} individual plots")
             except Exception as e:
                 print(f"Error creating metric comparison: {e}")
 
