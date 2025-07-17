@@ -486,9 +486,12 @@ class ModelComparisonVisualizer:
             trading_specific_metrics = [
                 'Win Rate [%]', 'Profit Factor', '# Trades', 'Expectancy [%]', 'SQN']
             if metric in trading_specific_metrics:
-                ax.text(0.02, 0.98, 'Note: Buy & Hold excluded for this metric',
+                # Place note at top right and explain why Buy & Hold is excluded
+                ax.text(0.98, 0.98,
+                        'Note: Buy & Hold excluded for this metric\n(Buy & Hold does not generate trades, so trade-based metrics are not meaningful)',
                         transform=ax.transAxes, fontsize=9,
-                        verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.7))
+                        verticalalignment='top', horizontalalignment='right',
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.7))
 
             plt.tight_layout()
 
