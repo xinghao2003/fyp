@@ -4,24 +4,19 @@ set -e
 
 echo "Starting VS Code Dev Container setup..."
 
-# Update repository (fetch latest changes)
-update_repository() {
-    echo "Updating repository..."
+# Clone repository
+clone_repository() {
+    echo "Cloning repository..."
     
     REPO_PATH="/workspace/fyp"
+    REPO_URL="https://github.com/xinghao2003/fyp.git"
     
-    if [ -d "$REPO_PATH" ]; then
-        echo "Repository exists, fetching latest changes..."
-        cd "$REPO_PATH"
-        git fetch origin
-        git pull origin main || git pull origin master || echo "Pull completed with conflicts or different branch"
-    else
-        echo "ERROR: Repository not found! This should have been cloned during build."
-        exit 1
-    fi
+    cd /workspace
+    git clone "$REPO_URL" fyp
+    echo "Repository cloned successfully"
     
     export REPO_PATH
-    echo "Repository updated at: $REPO_PATH"
+    echo "Repository cloned at: $REPO_PATH"
 }
 
 # Update Python environment (install any new requirements)
@@ -30,26 +25,20 @@ update_python_env() {
     
     cd "$REPO_PATH"
     
-    # Activate existing virtual environment
-    if [ -d ".venv" ]; then
-        source .venv/bin/activate
-        echo "Activated existing virtual environment"
-        echo "Python version: $(python --version)"
-        
-        # Install/update requirements if requirements.txt exists
-        if [ -f "requirements.txt" ]; then
-            echo "Installing/updating requirements from requirements.txt..."
-            # Pip will skip already installed packages with same version
-            pip install -r requirements.txt
-        else
-            echo "No requirements.txt found"
-        fi
-        
-        echo "Python environment update complete"
+    # Use the existing virtual environment from Dockerfile (/opt/venv)
+    echo "Using existing virtual environment at /opt/venv"
+    echo "Python version: $(python --version)"
+    
+    # Install/update requirements if requirements.txt exists
+    if [ -f "requirements.txt" ]; then
+        echo "Installing/updating requirements from requirements.txt..."
+        # Pip will skip already installed packages with same version
+        pip install -r requirements.txt
     else
-        echo "ERROR: Virtual environment not found! This should have been created during build."
-        exit 1
+        echo "No requirements.txt found"
     fi
+    
+    echo "Python environment update complete"
 }
 
 # Setup VS Code tunnel
@@ -75,7 +64,7 @@ setup_vscode_tunnel() {
 # Main execution
 echo "=== Container Runtime Setup ==="
 
-update_repository
+clone_repository
 update_python_env
 setup_vscode_tunnel
 
