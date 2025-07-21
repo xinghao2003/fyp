@@ -1,24 +1,10 @@
-# Core RL packages - Modern versions that support Gymnasium
-gymnasium
-stable-baselines3
-stable-baselines3[extra]
-sb3-contrib
-
-# Trading environment - Already uses Gymnasium
-gym-trading-env
-
-# Data science and visualization
-numpy
-pandas
-matplotlib
-seaborn
-tensorboard
-
-# Trading and financial data
 yfinance
 stockstats
-backtesting
-
-# Hyperparameter optimization
+stable-baselines3[extra]
+sb3-contrib
+gym-trading-env
 optuna
 optuna-dashboard
+backtesting
+matplotlib
+seaborn
