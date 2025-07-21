@@ -25,8 +25,7 @@ update_python_env() {
     
     cd "$REPO_PATH"
     
-    # Use the existing virtual environment from Dockerfile (/opt/venv)
-    echo "Using existing virtual environment at /opt/venv"
+    echo "Using system Python installation"
     echo "Python version: $(python --version)"
     
     # Install/update requirements if requirements.txt exists
@@ -50,6 +49,8 @@ setup_vscode_tunnel() {
     
     cd "$REPO_PATH"
     
+    echo "Python location: $(which python)"
+    
     echo "Starting VS Code tunnel with name: $VSCODE_TUNNEL_NAME"
     echo "You'll need to authenticate with GitHub when prompted"
     
@@ -70,7 +71,7 @@ setup_vscode_tunnel
 
 echo "=== Setup Complete ==="
 echo "Repository: $REPO_PATH"
-echo "Python venv: $REPO_PATH/.venv"
+echo "Python: System installation (no venv needed)"
 echo "VS Code tunnel: https://vscode.dev/tunnel/$VSCODE_TUNNEL_NAME"
 echo ""
 echo "Container is ready!"
