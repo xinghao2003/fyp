@@ -17,3 +17,5 @@ statistical-plot/
 result/
 plots/
 *png
+*csv
+*pkl
