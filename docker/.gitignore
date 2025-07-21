@@ -1,0 +1,8 @@
+# SSH keys - never commit these!
+ssh_key
+ssh_id_*
+*.pem
+*.key
+
+# Docker build context
+.dockerignore

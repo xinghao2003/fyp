@@ -87,10 +87,10 @@ RUN mkdir -p /root/.ssh && \
 WORKDIR /workspace
 RUN eval "$(ssh-agent -s)" && \
     ssh-add /root/.ssh/id_ed25519 && \
-    git clone git@github.com:xinghao2003/fyp-code.git
+    git clone git@github.com:xinghao2003/fyp.git
 
 # Setup Python virtual environment and install requirements during build
-WORKDIR /workspace/fyp-code
+WORKDIR /workspace/fyp
 RUN python3.11 -m venv .venv && \
     . .venv/bin/activate && \
     pip install --upgrade pip && \

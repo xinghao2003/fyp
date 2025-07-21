@@ -56,7 +56,7 @@ EOF
 update_repository() {
     echo "Updating repository..."
     
-    REPO_PATH="/workspace/fyp-code"
+    REPO_PATH="/workspace/fyp"
     
     if [ -d "$REPO_PATH" ]; then
         echo "Repository exists, fetching latest changes..."
