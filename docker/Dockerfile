@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     ca-certificates \
-    openssh-client \
     sudo \
     software-properties-common \
     build-essential \
@@ -71,23 +70,9 @@ RUN curl -Lk 'https://code.visualstudio.com/sha/download?build=stable&os=cli-alp
     && mv code /usr/local/bin/ \
     && rm vscode_cli.tar.gz
 
-# Copy SSH key early for git operations
-COPY ssh_id_ed25519_fyp-docker /ssh_id_ed25519_fyp-docker
-RUN chmod 600 /ssh_id_ed25519_fyp-docker
-
-# Setup SSH for git operations during build
-RUN mkdir -p /root/.ssh && \
-    cp /ssh_id_ed25519_fyp-docker /root/.ssh/id_ed25519 && \
-    chmod 600 /root/.ssh/id_ed25519 && \
-    echo "Host github.com\n    HostName github.com\n    User git\n    IdentityFile /root/.ssh/id_ed25519\n    IdentitiesOnly yes\n    StrictHostKeyChecking no" > /root/.ssh/config && \
-    chmod 600 /root/.ssh/config && \
-    ssh-keyscan -H github.com >> /root/.ssh/known_hosts
-
-# Clone repository during build
+# Clone repository during build using HTTPS
 WORKDIR /workspace
-RUN eval "$(ssh-agent -s)" && \
-    ssh-add /root/.ssh/id_ed25519 && \
-    git clone git@github.com:xinghao2003/fyp.git
+RUN git clone https://github.com/xinghao2003/fyp.git
 
 # Setup Python virtual environment and install requirements during build
 WORKDIR /workspace/fyp

@@ -4,54 +4,6 @@ set -e
 
 echo "Starting VS Code Dev Container setup..."
 
-# Setup SSH key for current user (in case it's different from build user)
-setup_github_auth() {
-    echo "Setting up GitHub authentication for runtime user..."
-    
-    mkdir -p ~/.ssh
-    chmod 700 ~/.ssh
-    
-    # Copy SSH key from the image
-    if [ -f "/ssh_id_ed25519_fyp-docker" ]; then
-        cp /ssh_id_ed25519_fyp-docker ~/.ssh/id_ed25519
-        sed -i 's/\r$//' ~/.ssh/id_ed25519
-        chmod 600 ~/.ssh/id_ed25519
-        
-        # Validate the key format
-        if ! ssh-keygen -l -f ~/.ssh/id_ed25519 >/dev/null 2>&1; then
-            echo "ERROR: SSH key format is invalid!"
-            echo "Please check that the SSH key file is properly formatted"
-            exit 1
-        fi
-        
-        # Create SSH config
-        cat > ~/.ssh/config << EOF
-Host github.com
-    HostName github.com
-    User git
-    IdentityFile ~/.ssh/id_ed25519
-    IdentitiesOnly yes
-    StrictHostKeyChecking no
-EOF
-        chmod 600 ~/.ssh/config
-        echo "SSH key setup complete"
-    else
-        echo "ERROR: SSH key file not found!"
-        exit 1
-    fi
-    
-    # Add GitHub to known hosts
-    ssh-keyscan -H github.com >> ~/.ssh/known_hosts
-    
-    # Start SSH agent and add the key
-    eval "$(ssh-agent -s)"
-    ssh-add ~/.ssh/id_ed25519
-    
-    # Test SSH connection
-    echo "Testing GitHub SSH connection..."
-    ssh -T git@github.com || true
-}
-
 # Update repository (fetch latest changes)
 update_repository() {
     echo "Updating repository..."
@@ -104,7 +56,7 @@ update_python_env() {
 setup_vscode_tunnel() {
     echo "Setting up VS Code tunnel..."
     
-    VSCODE_TUNNEL_NAME="fyp-xinghao2003"
+    VSCODE_TUNNEL_NAME="fyp"
     echo "Using tunnel name: $VSCODE_TUNNEL_NAME"
     
     cd "$REPO_PATH"
@@ -123,7 +75,6 @@ setup_vscode_tunnel() {
 # Main execution
 echo "=== Container Runtime Setup ==="
 
-setup_github_auth
 update_repository
 update_python_env
 setup_vscode_tunnel
