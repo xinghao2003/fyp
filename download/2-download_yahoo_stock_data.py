@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import os
 import json
+import argparse
 
 
 def download_stock_data(symbols=["AAPL"], period="1y", interval="1h", output_dir=None):
@@ -159,18 +160,31 @@ def download_aapl_data(period="1y", interval="1h", filename="AAPL_USD-Hourly.csv
 
 
 if __name__ == "__main__":
-    # Load symbols from tickers.json
-    
-    file = 'tickers-backtest.json'
+    # Set up command-line argument parsing
+    parser = argparse.ArgumentParser(
+        description='Download stock data from Yahoo Finance')
+    parser.add_argument('json_file',
+                        help='Path to JSON file containing stock symbols by category')
+    parser.add_argument('--period', default='max',
+                        help='Data period (default: max)')
+    parser.add_argument('--interval', default='1d',
+                        help='Data interval (default: 1d)')
 
+    args = parser.parse_args()
+
+    # Load symbols from the specified JSON file
     try:
-        with open(file, 'r') as f:
+        if not os.path.exists(args.json_file):
+            print(f"Error: File '{args.json_file}' not found!")
+            exit(1)
+
+        with open(args.json_file, 'r') as f:
             symbols_by_category = json.load(f)
     except FileNotFoundError:
-        print(f"Error: {file} file not found!")
+        print(f"Error: {args.json_file} file not found!")
         exit(1)
     except json.JSONDecodeError:
-        print(f"Error: Invalid JSON format in {file}!")
+        print(f"Error: Invalid JSON format in {args.json_file}!")
         exit(1)
 
     # Flatten all symbols into a single list
@@ -180,14 +194,16 @@ if __name__ == "__main__":
 
     print(
         f"Downloading data for {len(all_symbols)} symbols across all categories")
-    print("Configuration: 2 years of data with 1-hour intervals")
+    print(
+        f"Configuration: {args.period} period with {args.interval} intervals")
+    print(f"Source file: {args.json_file}")
     print("-" * 80)
 
     # Download all symbols
     results = download_stock_data(
         symbols=all_symbols,
-        period="max",
-        interval="1d"
+        period=args.period,
+        interval=args.interval
     )
 
     # Print detailed summary by category

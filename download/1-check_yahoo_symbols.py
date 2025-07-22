@@ -1,22 +1,23 @@
 import yfinance as yf
 import json
 import pandas as pd
+import argparse
 from datetime import datetime, timedelta
 
 
-def check_yahoo_symbols():
+def check_yahoo_symbols(json_file='tickers.json'):
     """Check if symbols exist on Yahoo Finance"""
 
-    # Load symbols from tickers.json
+    # Load symbols from specified JSON file
 
     try:
-        with open('tickers.json', 'r') as f:
+        with open(json_file, 'r') as f:
             symbols_by_category = json.load(f)
     except FileNotFoundError:
-        print("Error: tickers.json file not found!")
+        print(f"Error: {json_file} file not found!")
         return pd.DataFrame()
     except json.JSONDecodeError:
-        print("Error: Invalid JSON format in tickers.json!")
+        print(f"Error: Invalid JSON format in {json_file}!")
         return pd.DataFrame()
 
     results = []
@@ -81,14 +82,13 @@ def check_yahoo_symbols():
 
 
 if __name__ == "__main__":
-    # Install required packages if not available
-    try:
-        import yfinance
-    except ImportError:
-        print("Installing yfinance...")
-        import subprocess
-        subprocess.check_call(["pip", "install", "yfinance"])
-        import yfinance as yf
+    # Set up command-line argument parsing
+    parser = argparse.ArgumentParser(
+        description='Check Yahoo Finance symbols from JSON file')
+    parser.add_argument('json_file', nargs='?', default='tickers.json',
+                        help='JSON file containing symbols by category (default: tickers.json)')
+
+    args = parser.parse_args()
 
     # Run the check
-    results_df = check_yahoo_symbols()
+    results_df = check_yahoo_symbols(args.json_file)

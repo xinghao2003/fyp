@@ -21,11 +21,22 @@ from pathlib import Path
 import glob
 import pandas as pd
 import numpy as np
+import argparse
 
 # --------------------------------------------------------------------------
 # Configuration
 # --------------------------------------------------------------------------
-INPUT_DIR = r"1d-2005"        # folder that contains Yahoo-Finance csv files
+parser = argparse.ArgumentParser(
+    description="Convert CSV files to pickle format for MultiDatasetTradingEnv")
+parser.add_argument(
+    "input_dir", help="Directory containing CSV files to convert")
+args = parser.parse_args()
+
+INPUT_DIR = args.input_dir
+
+# Validate input directory exists
+if not os.path.exists(INPUT_DIR):
+    raise FileNotFoundError(f"Input directory '{INPUT_DIR}' does not exist")
 
 # --------------------------------------------------------------------------
 # Main loop

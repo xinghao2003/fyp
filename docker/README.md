@@ -6,12 +6,10 @@ This Docker container provides a complete development environment for the Final 
 
 ### Features
 
-- **Ubuntu 24.04** base with all necessary development tools
 - **Python 3.11** with virtual environment pre-configured
-- **TA-Lib** (Technical Analysis Library) installed for financial data analysis
 - **VS Code Server** with tunnel access for browser-based development
 - **Git integration** with automatic repository updates
-- **Persistent workspace** at `/workspace/fyp-code`
+- **Persistent workspace** at `/workspace/fyp`
 
 ### Use Cases
 
