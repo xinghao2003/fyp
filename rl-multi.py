@@ -2,6 +2,7 @@ import gym_trading_env
 import gymnasium as gym
 import pandas as pd
 from sb3_contrib import RecurrentPPO
+from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnNoModelImprovement
 from stable_baselines3.common.monitor import Monitor
 import numpy as np
@@ -9,10 +10,22 @@ import random
 import os
 from datetime import datetime
 from reward import reward_function_5 as custom_reward_function
+import argparse
+
+# Parse command line arguments
+parser = argparse.ArgumentParser(
+    description='Train PPO or RecurrentPPO for trading')
+parser.add_argument('--algorithm', type=str, choices=['ppo', 'rppo'], default='rppo',
+                    help='Algorithm to use: ppo for PPO, rppo for RecurrentPPO (default: rppo)')
+args = parser.parse_args()
+
+# Configuration: Set based on command line argument
+USE_RECURRENT_PPO = args.algorithm == 'rppo'
 
 # Generate unique timestamp-based ID for this run
 RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
 print(f"Please record this ID for tracking: {RUN_ID}")
+print(f"Using {'RecurrentPPO' if USE_RECURRENT_PPO else 'PPO'}")
 
 # Set seeds for reproducibility
 SEED = 42
@@ -90,13 +103,23 @@ eval_env = Monitor(eval_env)
 # Create PPO model with seed
 # Swap to "RecurrentPPO" to enable recurrent policies like LSTM
 # Use "MlpLstmPolicy" for LSTM support, which is useful for trading tasks, where temporal dependencies are important
-model = RecurrentPPO("MlpLstmPolicy",
-                     train_env,
-                     verbose=1,
-                     tensorboard_log="./runs",
-                     seed=SEED,
-                     device="cpu",  # Use CPU for training
-                     )
+# Previously, PPO with "MlpPolicy"
+if USE_RECURRENT_PPO:
+    model = RecurrentPPO("MlpLstmPolicy",
+                         train_env,
+                         verbose=1,
+                         tensorboard_log="./runs",
+                         seed=SEED,
+                         device="cpu",  # Use CPU for training
+                         )
+else:
+    model = PPO("MlpPolicy",
+                train_env,
+                verbose=1,
+                tensorboard_log="./runs",
+                seed=SEED,
+                device="cpu",  # Use CPU for training
+                )
 
 # Set up early stopping callback
 stop_callback = StopTrainingOnNoModelImprovement(
@@ -113,7 +136,9 @@ eval_callback = EvalCallback(eval_env,
                              verbose=1)
 
 # Train the model
-print(f"Starting PPO training with early stopping... [id: {RUN_ID}]")
+algorithm_name = "RecurrentPPO" if USE_RECURRENT_PPO else "PPO"
+print(
+    f"Starting {algorithm_name} training with early stopping... [id: {RUN_ID}]")
 model.learn(total_timesteps=5000000,
             tb_log_name=f"{RUN_ID}", callback=eval_callback)
 
