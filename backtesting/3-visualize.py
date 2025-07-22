@@ -4,6 +4,9 @@ import seaborn as sns
 import numpy as np
 from pathlib import Path
 import warnings
+import argparse
+import sys
+import os
 warnings.filterwarnings('ignore')
 
 # Set style for publication-quality plots
@@ -33,7 +36,13 @@ class ModelComparisonVisualizer:
                 df = pd.read_csv(csv_file)
                 strategy = self._extract_strategy_name(csv_file.name)
                 df['Strategy'] = strategy
-                df['Symbol'] = df['File'].apply(self._extract_symbol)
+                # Use the existing 'File' field from CSV instead of CSV filename
+                if 'File' in df.columns:
+                    df['Symbol'] = df['File'].apply(self._extract_symbol)
+                else:
+                    # Fallback if File column doesn't exist
+                    df['File'] = csv_file.name
+                    df['Symbol'] = df['File'].apply(self._extract_symbol)
 
                 # Convert numeric columns to proper data types
                 numeric_columns = [
@@ -51,10 +60,11 @@ class ModelComparisonVisualizer:
 
                 # Handle Buy & Hold specific metrics
                 df = self._handle_buy_hold_metrics(df, strategy)
-
                 all_data.append(df)
+                print(f"  ✓ Processed: {csv_file.name} ({strategy})")
+
             except Exception as e:
-                print(f"Error reading {csv_file}: {e}")
+                print(f"  ✗ Error processing {csv_file}: {e}")
 
         return pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
 
@@ -98,13 +108,22 @@ class ModelComparisonVisualizer:
             return filename.split('_')[2] if '_' in filename else filename.replace('.csv', '')
 
     def _extract_symbol(self, filename):
-        """Extract symbol from filename"""
+        """Extract symbol from filename in the File field of CSV data"""
+        # Handle different filename patterns from the File field in CSV
         base_name = filename.replace('.csv', '')
+
+        # Handle different filename patterns
         if '_USD-1d-max' in base_name:
+            # For files like "AAPL_USD-1d-max.csv"
             return base_name.split('_USD-1d-max')[0]
         elif '-USD_USD-1d-max' in base_name:
+            # For files like "AVAX-USD_USD-1d-max.csv"
             return base_name.split('-USD_USD-1d-max')[0]
+        elif '=X_USD-1d-max' in base_name:
+            # For forex files like "USDCAD=X_USD-1d-max.csv"
+            return base_name.split('=X_USD-1d-max')[0]
         else:
+            # Fallback: take the first part before underscore
             return base_name.split('_')[0]
 
     def _get_cleaned_data(self, df, required_metrics, strategy_specific=True):
@@ -212,7 +231,6 @@ class ModelComparisonVisualizer:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path, dpi=self.dpi, bbox_inches='tight')
-        plt.show()
 
         return fig
 
@@ -272,7 +290,6 @@ class ModelComparisonVisualizer:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path, dpi=self.dpi, bbox_inches='tight')
-        plt.show()
 
         return fig
 
@@ -294,12 +311,12 @@ class ModelComparisonVisualizer:
             print(f"No data available for {metric} heatmap after cleaning")
             return None
 
+        # # Handle duplicate entries by aggregating them
+        # df_clean = df_clean.groupby(['Symbol', 'Strategy'])[
+        #     metric].mean().reset_index()
+
         pivot_df = df_clean.pivot(
             index='Symbol', columns='Strategy', values=metric)
-
-        # Fill any remaining NaN values for better visualization
-        # You might want to comment this out if you prefer to show NaN as blank
-        # pivot_df = pivot_df.fillna(0)
 
         fig, ax = plt.subplots(figsize=(14, 8))
 
@@ -317,7 +334,6 @@ class ModelComparisonVisualizer:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path, dpi=self.dpi, bbox_inches='tight')
-        plt.show()
 
         return fig
 
@@ -418,7 +434,6 @@ class ModelComparisonVisualizer:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path, dpi=self.dpi, bbox_inches='tight')
-        plt.show()
 
         return fig, individual_figs
 
@@ -497,7 +512,10 @@ class ModelComparisonVisualizer:
 
             # Save individual plot
             if base_save_path:
-                # Create individual filename
+                # Create individual filename - handle Path objects properly
+                if isinstance(base_save_path, Path):
+                    base_save_path = str(base_save_path)
+
                 metric_clean = metric.replace('[%]', '').replace(
                     '(', '').replace(')', '').replace(' ', '_').replace('.', '').replace('#', 'num')
                 individual_save_path = base_save_path.replace(
@@ -506,7 +524,6 @@ class ModelComparisonVisualizer:
                             dpi=self.dpi, bbox_inches='tight')
                 print(f"Saved individual plot: {individual_save_path}")
 
-            plt.show()
             return fig
 
         except Exception as e:
@@ -588,7 +605,6 @@ class ModelComparisonVisualizer:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path, dpi=self.dpi, bbox_inches='tight')
-        plt.show()
 
         return fig
 
@@ -672,7 +688,6 @@ class ModelComparisonVisualizer:
         plt.tight_layout()
         if save_path:
             plt.savefig(save_path, dpi=self.dpi, bbox_inches='tight')
-        plt.show()
 
         return fig, comparison_df
 
@@ -736,7 +751,12 @@ class ModelComparisonVisualizer:
         print(summary.to_string())
 
         if save_path:
-            summary.to_csv(save_path.replace('.png', '.csv'))
+            # Handle Path objects properly
+            if isinstance(save_path, Path):
+                csv_path = save_path.with_suffix('.csv')
+            else:
+                csv_path = save_path.replace('.png', '.csv')
+            summary.to_csv(csv_path)
 
         return summary
 
@@ -758,94 +778,223 @@ def get_recommended_metrics():
 
 # Main execution example
 if __name__ == "__main__":
-    # Initialize visualizer
-    viz = ModelComparisonVisualizer(figsize=(12, 8), dpi=300)
+    # Add command line argument parsing
+    parser = argparse.ArgumentParser(
+        description='Generate strategy comparison visualizations')
+    parser.add_argument('inputs', nargs='+',
+                        help='CSV files or folder path(s) containing strategy results')
+    parser.add_argument('--output-dir', '-o', default='plot',
+                        help='Output directory for plots (default: plot)')
+    parser.add_argument('--dpi', type=int, default=300,
+                        help='Plot DPI (default: 300)')
+    parser.add_argument('--figsize', nargs=2, type=float, default=[12, 8],
+                        help='Figure size as width height (default: 12 8)')
 
-    # Load your data (replace with your actual folder path)
-    folder_path = r"C:\Users\xingh\Desktop\fyp-code\backtesting\result\plot"
+    args = parser.parse_args()
+
+    # Create output directory
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(exist_ok=True)
+    print(f"Output directory: {output_dir.absolute()}")
+
+    # Initialize visualizer
+    viz = ModelComparisonVisualizer(figsize=tuple(args.figsize), dpi=args.dpi)
+
+    # Collect all CSV files from inputs
+    csv_files = []
+    for input_path in args.inputs:
+        path = Path(input_path)
+        if path.is_file() and path.suffix.lower() == '.csv':
+            csv_files.append(path)
+            print(f"Added CSV file: {path}")
+        elif path.is_dir():
+            folder_csvs = list(path.glob('*.csv'))
+            csv_files.extend(folder_csvs)
+            print(f"Added {len(folder_csvs)} CSV files from folder: {path}")
+        else:
+            print(
+                f"Warning: {input_path} is not a valid CSV file or directory")
+
+    if not csv_files:
+        print("Error: No CSV files found in the specified inputs")
+        sys.exit(1)
+
+    print(f"\nTotal CSV files to process: {len(csv_files)}")
 
     try:
-        # Load data
-        df = viz.load_and_prepare_data(folder_path)
+        # Load data from all CSV files
+        print("Loading and preparing data...")
+        all_data = []
 
-        if df.empty:
-            print("No data loaded. Please check your folder path and CSV files.")
-        else:
-            print(f"Loaded data for {len(df)} strategy-asset combinations")
-            print(f"Strategies: {df['Strategy'].unique()}")
-            print(f"Assets: {df['Symbol'].unique()}")
-
-            # Check available numeric columns
-            numeric_cols = df.select_dtypes(
-                include=[np.number]).columns.tolist()
-            print(f"Available numeric columns: {numeric_cols}")
-
-            # Create all visualizations with error handling
-            print("\nCreating visualizations...")
-
-            # 1. Performance radar chart
+        for csv_file in csv_files:
             try:
-                viz.create_performance_radar_chart(
-                    df, save_path="performance_radar.png")
+                df = pd.read_csv(csv_file)
+                strategy = viz._extract_strategy_name(csv_file.name)
+                df['Strategy'] = strategy
+                # Use the existing 'File' field from CSV instead of CSV filename
+                if 'File' in df.columns:
+                    df['Symbol'] = df['File'].apply(viz._extract_symbol)
+                else:
+                    # Fallback if File column doesn't exist
+                    df['File'] = csv_file.name
+                    df['Symbol'] = df['File'].apply(viz._extract_symbol)
+
+                # Convert numeric columns to proper data types
+                numeric_columns = [
+                    'Return [%]', 'Sharpe Ratio', 'Volatility (Ann.) [%]',
+                    'Max. Drawdown [%]', 'Win Rate [%]', 'Profit Factor',
+                    'Calmar Ratio', 'Sortino Ratio', 'CAGR [%]', 'Return (Ann.) [%]',
+                    'Alpha [%]', 'Beta', 'Avg. Drawdown [%]', 'Max. Drawdown Duration',
+                    'Avg. Drawdown Duration', '# Trades', 'Best Trade [%]',
+                    'Worst Trade [%]', 'Avg. Trade [%]', 'Expectancy [%]', 'SQN'
+                ]
+
+                for col in numeric_columns:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+                # Handle Buy & Hold specific metrics
+                df = viz._handle_buy_hold_metrics(df, strategy)
+                all_data.append(df)
+                print(f"  ✓ Processed: {csv_file.name} ({strategy})")
+
             except Exception as e:
-                print(f"Error creating radar chart: {e}")
+                print(f"  ✗ Error processing {csv_file}: {e}")
 
-            # 2. Risk-return scatter
-            try:
-                viz.create_risk_return_scatter(
-                    df, save_path="risk_return_scatter.png")
-            except Exception as e:
-                print(f"Error creating risk-return scatter: {e}")
+        if not all_data:
+            print("Error: No valid data could be loaded from CSV files")
+            sys.exit(1)
 
-            # 3. Performance heatmap
-            try:
-                viz.create_performance_heatmap(df, metric='Sharpe Ratio',
-                                               save_path="sharpe_heatmap.png")
-            except Exception as e:
-                print(f"Error creating heatmap: {e}")
+        # Combine all data
+        df = pd.concat(all_data, ignore_index=True)
 
-            # 4. Metric comparison bars
-            try:
-                combined_fig, individual_figs = viz.create_metric_comparison_bars(
-                    df, save_path="metric_comparison.png")
+        print(f"\nLoaded data for {len(df)} strategy-asset combinations")
+        print(f"Strategies: {df['Strategy'].unique()}")
+        print(f"Assets: {df['Symbol'].unique()}")
+
+        # Check available numeric columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        print(f"Available numeric columns: {len(numeric_cols)}")
+
+        # Create all visualizations with error handling
+        print("\nCreating visualizations...")
+
+        # 1. Performance radar chart
+        try:
+            print("  Creating performance radar chart...")
+            viz.create_performance_radar_chart(
+                df, save_path=output_dir / "performance_radar.png")
+            print("  ✓ Performance radar chart saved")
+        except Exception as e:
+            print(f"  ✗ Error creating radar chart: {e}")
+
+        # 2. Risk-return scatter
+        try:
+            print("  Creating risk-return scatter plot...")
+            viz.create_risk_return_scatter(
+                df, save_path=output_dir / "risk_return_scatter.png")
+            print("  ✓ Risk-return scatter plot saved")
+        except Exception as e:
+            print(f"  ✗ Error creating risk-return scatter: {e}")
+
+        # 3. Performance heatmap
+        try:
+            print("  Creating performance heatmap...")
+            viz.create_performance_heatmap(df, metric='Sharpe Ratio',
+                                           save_path=output_dir / "sharpe_heatmap.png")
+            print("  ✓ Performance heatmap saved")
+        except Exception as e:
+            print(f"  ✗ Error creating heatmap: {e}")
+
+        # 4. Metric comparison bars
+        try:
+            print("  Creating metric comparison charts...")
+            combined_fig, individual_figs = viz.create_metric_comparison_bars(
+                df, save_path=output_dir / "metric_comparison.png")
+            print(
+                f"  ✓ Created combined metric comparison and {len(individual_figs)} individual plots")
+        except Exception as e:
+            print(f"  ✗ Error creating metric comparison: {e}")
+
+        # 5. Drawdown comparison
+        try:
+            print("  Creating drawdown comparison...")
+            viz.create_drawdown_comparison(
+                df, save_path=output_dir / "drawdown_comparison.png")
+            print("  ✓ Drawdown comparison saved")
+        except Exception as e:
+            print(f"  ✗ Error creating drawdown comparison: {e}")
+
+        # 6. Statistical significance test
+        try:
+            print("  Creating statistical significance test...")
+            fig, stats_df = viz.create_statistical_significance_test(
+                df, save_path=output_dir / "statistical_significance.png")
+            if stats_df is not None:
+                stats_df.to_csv(
+                    output_dir / "statistical_significance.csv", index=False)
+                print("  ✓ Statistical significance test saved")
+            else:
                 print(
-                    f"Created combined metric comparison and {len(individual_figs)} individual plots")
-            except Exception as e:
-                print(f"Error creating metric comparison: {e}")
+                    "  ⚠ Statistical significance test completed but no output generated")
+        except Exception as e:
+            print(f"  ✗ Error creating statistical significance test: {e}")
 
-            # 5. Drawdown comparison
-            try:
-                viz.create_drawdown_comparison(
-                    df, save_path="drawdown_comparison.png")
-            except Exception as e:
-                print(f"Error creating drawdown comparison: {e}")
+        # 7. Comprehensive summary table
+        try:
+            print("  Creating comprehensive summary table...")
+            summary = viz.create_comprehensive_summary_table(
+                df, save_path=output_dir / "comprehensive_summary.png")
+            if summary is not None:
+                summary.to_csv(output_dir / "comprehensive_summary.csv")
+                print("  ✓ Comprehensive summary table saved")
+            else:
+                print("  ⚠ Summary table completed but no output generated")
+        except Exception as e:
+            print(f"  ✗ Error creating summary table: {e}")
 
-            # 6. Statistical significance test
-            try:
-                fig, stats_df = viz.create_statistical_significance_test(
-                    df, save_path="statistical_significance.png")
-            except Exception as e:
-                print(f"Error creating statistical significance test: {e}")
+        print(f"\n✓ Visualization creation completed!")
+        print(f"All plots saved to: {output_dir.absolute()}")
 
-            # 7. Comprehensive summary table
-            try:
-                summary = viz.create_comprehensive_summary_table(
-                    df, save_path="comprehensive_summary.png")
-            except Exception as e:
-                print(f"Error creating summary table: {e}")
-
-            print("\nVisualization creation completed!")
-
-            # Recommended metrics for the report
-            metrics = get_recommended_metrics()
-            print("Recommended metrics for your report:")
-            for category, metric_list in metrics.items():
-                print(f"\n{category.replace('_', ' ').title()}:")
-                for metric in metric_list:
-                    print(f"  - {metric}")
+        # Recommended metrics for the report
+        metrics = get_recommended_metrics()
+        print("\nRecommended metrics for your report:")
+        for category, metric_list in metrics.items():
+            print(f"\n{category.replace('_', ' ').title()}:")
+            for metric in metric_list:
+                print(f"  - {metric}")
 
     except Exception as e:
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
-        print("Please ensure your CSV files are in the correct format and folder path is valid.")
+        print("Please ensure your CSV files are in the correct format.")
+
+    # Print usage examples
+    print(f"\n" + "="*60)
+    print("USAGE EXAMPLES:")
+    print("="*60)
+    print("# Process a single CSV file:")
+    print("python 3-visualize.py strategy1.csv")
+    print()
+    print("# Process multiple CSV files:")
+    print("python 3-visualize.py strategy1.csv strategy2.csv strategy3.csv")
+    print()
+    print("# Process all CSV files in a folder:")
+    print("python 3-visualize.py /path/to/csv/folder")
+    print()
+    print("# Mix files and folders:")
+    print("python 3-visualize.py strategy1.csv /path/to/folder strategy2.csv")
+    print()
+    print("# Specify custom output directory:")
+    print("python 3-visualize.py --output-dir my_plots /path/to/csv/folder")
+    print()
+    print("# Custom figure size and DPI:")
+    print("python 3-visualize.py --figsize 16 10 --dpi 150 folder_path")
+    print("python 3-visualize.py strategy1.csv /path/to/folder strategy2.csv")
+    print()
+    print("# Specify custom output directory:")
+    print("python 3-visualize.py --output-dir my_plots /path/to/csv/folder")
+    print()
+    print("# Custom figure size and DPI:")
+    print("python 3-visualize.py --figsize 16 10 --dpi 150 folder_path")
