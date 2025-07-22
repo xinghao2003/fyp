@@ -7,6 +7,7 @@ import os
 import json
 from datetime import datetime
 import logging
+import argparse
 
 # --- Logger Setup ---
 log_dir = "logs"
@@ -411,93 +412,123 @@ def find_csv_files(folder_path):
     return csv_files
 
 
-# <--- CHANGE THIS TO YOUR FOLDER PATH
-folder_path = r'1d-2015'
+def main():
+    """Main function to handle command line arguments and run the backtesting."""
+    parser = argparse.ArgumentParser(
+        description='Run baseline trading strategies on CSV data files.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=""":
+Example usage:
+  python 1-run-baselines.py 1d-2015
+  python 1-run-baselines.py "C:\\path\\to\\your\\data\\folder"
+  python 1-run-baselines.py ../data/stocks/
 
-try:
-    logger.info(f"Searching for CSV files in: {folder_path}")
-    csv_files = find_csv_files(folder_path)
+Note: CSV files must have columns: 'date', 'open', 'high', 'low', 'close', 'volume'
+        """
+    )
 
-    if not csv_files:
-        logger.warning(
-            f"No CSV files found in '{folder_path}' and its subfolders.")
-        print(f"No CSV files found in '{folder_path}' and its subfolders.")
-    else:
-        strategies = get_all_strategies()
-        logger.info(
-            f"Found {len(strategies)} strategies to test: {list(strategies.keys())}")
-        print(f"Found {len(strategies)} strategies to test:")
-        for strategy_name in strategies.keys():
-            print(f"  - {strategy_name}")
+    parser.add_argument(
+        'folder_path',
+        type=str,
+        help='Path to the folder containing CSV files to process'
+    )
 
-        print(f"\nFound {len(csv_files)} CSV files to process:")
-        for file in csv_files:
-            print(f"  - {file}")
+    args = parser.parse_args()
+    folder_path = args.folder_path
 
-        folder_name = os.path.basename(os.path.normpath(folder_path))
+    try:
+        # Check if folder exists
+        if not os.path.exists(folder_path):
+            logger.error(f"Error: The folder '{folder_path}' does not exist.")
+            print(f"Error: The folder '{folder_path}' does not exist.")
+            print("Please check the folder path and try again.")
+            return
 
-        results = []
-        for csv_file in csv_files:
-            logger.info(f"Processing file: {csv_file}")
-            result = process_csv_file(csv_file, folder_name)
-            results.append(result)
+        logger.info(f"Searching for CSV files in: {folder_path}")
+        csv_files = find_csv_files(folder_path)
 
-        save_summary_results(results, folder_name)
-
-        logger.info(f"{'='*60}")
-        logger.info("PROCESSING SUMMARY")
-        logger.info(f"{'='*60}")
-
-        print(f"\n{'='*60}")
-        print("PROCESSING SUMMARY")
-        print(f"{'='*60}")
-
-        successful_files = sum(1 for r in results if r['status'] == 'success')
-        failed_files = sum(1 for r in results if r['status'] == 'error')
-
-        logger.info(f"Total files processed: {len(results)}")
-        logger.info(f"Successful files: {successful_files}")
-        logger.info(f"Failed files: {failed_files}")
-
-        print(f"Total files processed: {len(results)}")
-        print(f"Successful files: {successful_files}")
-        print(f"Failed files: {failed_files}")
-
-        # Count strategy successes/failures
-        strategy_stats = {}
-        for result in results:
-            if result['status'] == 'success':
-                for strategy_name, strategy_result in result['strategy_results'].items():
-                    if strategy_name not in strategy_stats:
-                        strategy_stats[strategy_name] = {
-                            'success': 0, 'error': 0}
-
-                    if strategy_result['status'] == 'success':
-                        strategy_stats[strategy_name]['success'] += 1
-                    else:
-                        strategy_stats[strategy_name]['error'] += 1
-
-        logger.info("Strategy Success/Failure Summary:")
-        print(f"\nStrategy Success/Failure Summary:")
-        for strategy_name, stats in strategy_stats.items():
-            total = stats['success'] + stats['error']
+        if not csv_files:
+            logger.warning(
+                f"No CSV files found in '{folder_path}' and its subfolders.")
+            print(f"No CSV files found in '{folder_path}' and its subfolders.")
+        else:
+            strategies = get_all_strategies()
             logger.info(
-                f"  {strategy_name}: {stats['success']}/{total} successful")
-            print(f"  {strategy_name}: {stats['success']}/{total} successful")
+                f"Found {len(strategies)} strategies to test: {list(strategies.keys())}")
+            print(f"Found {len(strategies)} strategies to test:")
+            for strategy_name in strategies.keys():
+                print(f"  - {strategy_name}")
 
-        if failed_files > 0:
-            logger.warning("Failed files:")
-            print("\nFailed files:")
+            print(f"\nFound {len(csv_files)} CSV files to process:")
+            for file in csv_files:
+                print(f"  - {file}")
+
+            folder_name = os.path.basename(os.path.normpath(folder_path))
+
+            results = []
+            for csv_file in csv_files:
+                logger.info(f"Processing file: {csv_file}")
+                result = process_csv_file(csv_file, folder_name)
+                results.append(result)
+
+            save_summary_results(results, folder_name)
+
+            logger.info(f"{'='*60}")
+            logger.info("PROCESSING SUMMARY")
+            logger.info(f"{'='*60}")
+
+            print(f"\n{'='*60}")
+            print("PROCESSING SUMMARY")
+            print(f"{'='*60}")
+
+            successful_files = sum(
+                1 for r in results if r['status'] == 'success')
+            failed_files = sum(1 for r in results if r['status'] == 'error')
+
+            logger.info(f"Total files processed: {len(results)}")
+            logger.info(f"Successful files: {successful_files}")
+            logger.info(f"Failed files: {failed_files}")
+
+            print(f"Total files processed: {len(results)}")
+            print(f"Successful files: {successful_files}")
+            print(f"Failed files: {failed_files}")
+
+            # Count strategy successes/failures
+            strategy_stats = {}
             for result in results:
-                if result['status'] == 'error':
-                    logger.warning(
-                        f"  - {result['file_path']}: {result['error']}")
-                    print(f"  - {result['file_path']}: {result['error']}")
+                if result['status'] == 'success':
+                    for strategy_name, strategy_result in result['strategy_results'].items():
+                        if strategy_name not in strategy_stats:
+                            strategy_stats[strategy_name] = {
+                                'success': 0, 'error': 0}
 
-except FileNotFoundError:
-    logger.error(f"Error: The folder '{folder_path}' was not found.")
-    print(f"Error: The folder '{folder_path}' was not found.")
-    print("Please make sure the folder path is correct.")
-except Exception as e:
-    logger.error(f"An error occurred: {e}", exc_info=True)
-    print(f"An error occurred: {e}")
+                        if strategy_result['status'] == 'success':
+                            strategy_stats[strategy_name]['success'] += 1
+                        else:
+                            strategy_stats[strategy_name]['error'] += 1
+
+            logger.info("Strategy Success/Failure Summary:")
+            print(f"\nStrategy Success/Failure Summary:")
+            for strategy_name, stats in strategy_stats.items():
+                total = stats['success'] + stats['error']
+                logger.info(
+                    f"  {strategy_name}: {stats['success']}/{total} successful")
+                print(
+                    f"  {strategy_name}: {stats['success']}/{total} successful")
+
+            if failed_files > 0:
+                logger.warning("Failed files:")
+                print("\nFailed files:")
+                for result in results:
+                    if result['status'] == 'error':
+                        logger.warning(
+                            f"  - {result['file_path']}: {result['error']}")
+                        print(f"  - {result['file_path']}: {result['error']}")
+
+    except Exception as e:
+        logger.error(f"An error occurred: {e}", exc_info=True)
+        print(f"An error occurred: {e}")
+
+
+if __name__ == "__main__":
+    main()
