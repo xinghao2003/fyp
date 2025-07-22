@@ -1,17 +1,21 @@
 # Docker Development Container
 
-## Introduction
+Complete development environment for the Final Year Project (FYP) with browser-based VS Code access.
 
-This Docker container provides a complete development environment for the Final Year Project (FYP). It's designed to eliminate "works on my machine" issues by providing a consistent, reproducible development setup that can be accessed from anywhere via VS Code in the browser.
+## Overview
 
-### Features
+This Docker container provides a consistent, reproducible development environment that eliminates "works on my machine" issues. Access your development environment from anywhere via VS Code in the browser, making it ideal for remote development and team collaboration.
+
+## Features
 
 - **Python 3.11** with virtual environment pre-configured
 - **VS Code Server** with tunnel access for browser-based development
 - **Git integration** with automatic repository updates
 - **Persistent workspace** at `/workspace/fyp`
+- **Cross-platform compatibility** - works on any device with a web browser
+- **Resource flexibility** - deploy on cloud VMs or high-performance servers
 
-### Use Cases
+## Use Cases
 
 - Remote development from any device with a web browser
 - Consistent development environment across team members

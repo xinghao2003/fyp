@@ -1,10 +1,23 @@
 # Financial Data Preprocessing Pipeline
 
-This directory contains a 6-step preprocessing pipeline for preparing financial time series data for reinforcement learning trading environments. The scripts process raw stock market CSV data through technical indicator calculation, normalization, filtering, cleaning, splitting, and final formatting.
+6-step pipeline for preparing financial time series data for reinforcement learning trading environments.
 
-## Pipeline Overview
+## Overview
 
-Run scripts in numerical order (1-6) for complete preprocessing:
+This preprocessing pipeline transforms raw stock market CSV data into ML-ready format through technical indicator calculation, normalization, filtering, cleaning, temporal splitting, and final formatting. The pipeline ensures data quality, prevents lookahead bias, and optimizes for reinforcement learning environments.
+
+## Features
+
+- **Technical indicators** - 15+ indicators including MACD, RSI, Bollinger Bands
+- **Advanced normalization** - Feature-specific strategies preventing lookahead bias
+- **Data quality assurance** - NaN handling and temporal consistency
+- **Temporal splitting** - Proper train/validation/test splits for time series
+- **ML optimization** - Pickle format compatible with gym environments
+- **Batch processing** - Directory-wide processing with progress tracking
+
+## Pipeline Components
+
+Execute scripts in numerical order (1-6) for complete preprocessing:
 
 ### 1. Technical Indicators (`1-add-indicators.py`)
 
@@ -131,7 +144,9 @@ Converts CSV files to pickle format compatible with `MultiDatasetTradingEnv`.
 python 6-prepare-gym-compatible-data.py <path_to_csv_directory>
 ```
 
-## Complete Pipeline Execution
+## Usage
+
+### Complete Pipeline Execution
 
 ```bash
 # Step 1: Add technical indicators
@@ -153,33 +168,74 @@ python 5-split-fix.py /path/to/raw/csvs
 python 6-prepare-gym-compatible-data.py /path/to/raw/csvs
 ```
 
-## Data Flow
+### Individual Script Usage
 
+```bash
+# Date filtering with custom range
+python 3-date-cap.py /path/to/csvs --start-date 2020-01-01 --end-date 2024-12-31
+
+# Processing specific directories
+python 1-add-indicators.py /specific/directory
+```
+
+## Configuration
+
+### Default Parameters
+- **Date range**: 2015-01-01 to 2025-06-30
+- **Normalization window**: 252 days (1 trading year)
+- **Minimum periods**: 30 days for reliable statistics
+- **Data splits**: Train (until 2020), Val (2021-2024), Test (2025+)
+
+### Key Settings
+- `WINDOW = 252` (rolling window for normalization)
+- `MIN_PERIODS = 30` (minimum data points for calculations)
+- Prevents lookahead bias in all normalization steps
+
+## Output
+
+### Data Flow
 ```
 Raw CSV → Technical Indicators → Normalization → Date Filter → Clean NaNs → Split → Pickle
 ```
 
-## Input/Output Format
+### File Formats
 
 **Input (Raw CSV):**
-
-```
+```csv
 date,open,high,low,close,volume
 2023-06-26 09:30:00-04:00,186.83,187.12,185.95,186.45,9851788
 ```
 
 **Output (Final Pickle):**
-
 - DatetimeIndex (UTC-naive, sorted ascending)
 - All original OHLCV data
 - Technical indicators (MACD, RSI, etc.)
 - Normalized features (norm_* columns)
 - Ready for `MultiDatasetTradingEnv`
 
-## Notes
+## Examples
 
-- Scripts process entire directories recursively
-- Files are modified in-place (backup recommended)
-- Normalization prevents lookahead bias
-- 4-year validation period chosen for stable performance metrics
-- Final pickle format optimized for gym environments
+```bash
+# Process single directory
+python 1-add-indicators.py ./stock_data
+
+# Custom date range
+python 3-date-cap.py ./data --start-date 2020-01-01 --end-date 2024-12-31
+
+# Full pipeline for multiple datasets
+for dir in data/*/; do
+    python 1-add-indicators.py "$dir"
+    python 2-normalization.py "$dir"
+    python 3-date-cap.py "$dir"
+    python 4-cleaning.py "$dir"
+    python 5-split-fix.py "$dir"
+    python 6-prepare-gym-compatible-data.py "$dir"
+done
+```
+
+## Dependencies
+
+- pandas: Data manipulation and analysis
+- numpy: Numerical computations
+- stockstats: Technical indicator calculations
+- pathlib: File system operations
