@@ -25,7 +25,8 @@ def download_stock_data(symbols=["AAPL"], period="1y", interval="1h", output_dir
 
     # Set output directory
     if output_dir is None:
-        output_dir = os.path.join(os.path.dirname(__file__), "1d-max")
+        output_dir = os.path.join(os.path.dirname(
+            __file__), f"{interval}-{period}")
 
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
