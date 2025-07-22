@@ -90,15 +90,18 @@ def preprocess_hybrid(df: pd.DataFrame) -> pd.DataFrame:
 
 # --- Usage Example ---
 if __name__ == '__main__':
-    # Folder containing CSV files (modify this path as needed)
-    folder_path = r"1d-2015"
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Apply hybrid normalization to CSV files')
+    parser.add_argument('path', help='Path to directory containing CSV files')
+    args = parser.parse_args()
 
     # Find all CSV files recursively in the folder and subfolders
-    csv_pattern = os.path.join(folder_path, "**", "*.csv")
+    csv_pattern = os.path.join(args.path, "**", "*.csv")
     csv_files = glob.glob(csv_pattern, recursive=True)
 
     if not csv_files:
-        print(f"No CSV files found in {folder_path}")
+        print(f"No CSV files found in {args.path}")
         exit()
 
     print(f"Found {len(csv_files)} CSV files to process:")

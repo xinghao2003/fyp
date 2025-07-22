@@ -34,9 +34,14 @@ def clean_first_record(csv_path):
 
 
 def main():
-    root_folder = r"1d-2015"
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Clean first records with null values from CSV files')
+    parser.add_argument('path', help='Path to directory containing CSV files')
+    args = parser.parse_args()
+    
     changed_files = []
-    for dirpath, _, filenames in os.walk(root_folder):
+    for dirpath, _, filenames in os.walk(args.path):
         for fname in filenames:
             if fname.lower().endswith('.csv'):
                 fpath = os.path.join(dirpath, fname)

@@ -113,8 +113,11 @@ def split_csv_files(folder_path):
 
 
 if __name__ == "__main__":
-    # Change this path to your data folder
-    data_folder = r"1d-2005"
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Split CSV files into train/val/test sets by date')
+    parser.add_argument('path', help='Path to directory containing CSV files')
+    args = parser.parse_args()
 
     # Split using fixed date ranges
-    split_csv_files(data_folder)
+    split_csv_files(args.path)

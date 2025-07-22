@@ -61,13 +61,13 @@ def process_csv_files(folder_path, start_date='2005-01-01', end_date='2025-06-30
 
 
 if __name__ == "__main__":
-    # Set the folder path - change this to your actual folder path
-    folder_path = r"1d-2015"
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Filter CSV files by date range')
+    parser.add_argument('path', help='Path to directory containing CSV files')
+    parser.add_argument('--start-date', default='2015-01-01', help='Start date (default: 2015-01-01)')
+    parser.add_argument('--end-date', default='2025-06-30', help='End date (default: 2025-06-30)')
+    args = parser.parse_args()
 
-    # If no path provided, use current directory
-    if not folder_path:
-        folder_path = "."
-
-    process_csv_files(folder_path, start_date='2015-01-01',
-                      end_date='2025-06-30')
+    process_csv_files(args.path, start_date=args.start_date, end_date=args.end_date)
     print("Processing complete!")
