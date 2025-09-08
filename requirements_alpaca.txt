@@ -1,0 +1,8 @@
+# Alpaca Integration Requirements
+
+# Additional dependencies for Alpaca API integration
+alpaca-trade-api==3.2.0    # Alpaca trading API client
+scikit-learn==1.7.1        # For data preprocessing and normalization
+
+# Note: These dependencies enable enhanced data acquisition and live trading capabilities
+# while maintaining full compatibility with the existing preprocessing pipeline.
