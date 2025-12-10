@@ -18,6 +18,7 @@ import sys
 import math
 import hashlib
 import glob
+from pathlib import Path
 import argparse
 import traceback
 
@@ -245,6 +246,9 @@ parser = argparse.ArgumentParser(
     description="Train a trading agent with Optuna.")
 parser.add_argument('--run-id', type=str,
                     help='Specify a run ID to continue a previous optimization.')
+parser.add_argument('--dataset-dir', type=str,
+                    default='dataset/1d-2005',
+                    help='Base dataset directory. Must contain subfolders train, val, test each containing .pkl files.')
 # Use parse_known_args to avoid issues with other args if any, especially in notebooks
 args, _ = parser.parse_known_args()
 
@@ -290,6 +294,36 @@ def set_seeds(seed):
 
 
 set_seeds(SEED)
+
+# Validate and set dataset directory
+def validate_dataset_dir(dataset_dir: str) -> None:
+    """Ensure provided dataset_dir exists and has train/val/test subdirs each containing at least one .pkl file."""
+    p = Path(dataset_dir)
+    if not p.exists():
+        raise FileNotFoundError(f"Specified dataset_dir does not exist: {dataset_dir}")
+    missing = []
+    no_pkl = []
+    for sub in ('train', 'val', 'test'):
+        subdir = p / sub
+        if not subdir.exists() or not subdir.is_dir():
+            missing.append(sub)
+        else:
+            pkls = list(subdir.glob('*.pkl'))
+            if len(pkls) == 0:
+                no_pkl.append(sub)
+    if missing:
+        raise FileNotFoundError(f"dataset_dir '{dataset_dir}' missing subfolders: {missing}")
+    if no_pkl:
+        raise FileNotFoundError(f"dataset_dir '{dataset_dir}' subfolders missing .pkl files: {no_pkl}")
+
+
+DATASET_DIR = args.dataset_dir
+try:
+    validate_dataset_dir(DATASET_DIR)
+    logger.info(f"Using dataset dir: {DATASET_DIR}")
+except Exception as e:
+    logger.error(f"Invalid dataset directory provided: {e}")
+    raise
 
 # Custom preprocessing function
 
@@ -615,7 +649,7 @@ def evaluate_sharpe_ratio(model, eval_env, n_episodes=10, base_seed=42, annual_r
         float: Sharpe ratio of the portfolio returns
     """
     # Create predictable evaluation environment specifically for Sharpe ratio evaluation
-    val_dataset_paths = sorted(glob.glob('dataset/1d-2005/val/*.pkl'))
+    val_dataset_paths = sorted(glob.glob(os.path.join(DATASET_DIR, 'val', '*.pkl')))
     if not val_dataset_paths:
         raise FileNotFoundError("No validation datasets found.")
 
@@ -996,7 +1030,7 @@ def objective(trial):
             logger.info(
                 f"Trial {trial.number}: Creating training environment...")
             train_env = gym.make('MultiDatasetTradingEnv',
-                                 dataset_dir='dataset/1d-2005/train/*.pkl',
+                                 dataset_dir=os.path.join(DATASET_DIR, 'train', '*.pkl'),
                                  reward_function=custom_reward_function,
                                  preprocess=preprocess_func,
                                  windows=windows,
@@ -1041,7 +1075,7 @@ def objective(trial):
             logger.info(
                 f"Trial {trial.number}: Creating evaluation environment...")
             eval_env = gym.make('MultiDatasetTradingEnv',
-                                dataset_dir='dataset/1d-2005/val/*.pkl',
+                                dataset_dir=os.path.join(DATASET_DIR, 'val', '*.pkl'),
                                 reward_function=custom_reward_function,
                                 preprocess=preprocess_func,
                                 windows=windows,
@@ -1372,7 +1406,7 @@ def run_optuna_optimization(number_of_trials=50):
 
     # Create final environments
     final_train_env = gym.make('MultiDatasetTradingEnv',
-                               dataset_dir='dataset/1d-2005/train/*.pkl',
+                               dataset_dir=os.path.join(DATASET_DIR, 'train', '*.pkl'),
                                reward_function=best_reward_function,
                                preprocess=best_preprocess_func,
                                windows=best_trial.params['windows'],
@@ -1399,7 +1433,7 @@ def run_optuna_optimization(number_of_trials=50):
     )
 
     final_eval_env = gym.make('MultiDatasetTradingEnv',
-                              dataset_dir='dataset/1d-2005/val/*.pkl',
+                              dataset_dir=os.path.join(DATASET_DIR, 'val', '*.pkl'),
                               reward_function=best_reward_function,
                               preprocess=best_preprocess_func,
                               windows=best_trial.params['windows'],
