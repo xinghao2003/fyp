@@ -156,6 +156,28 @@ python 2-rl-backtest.py --model best_model.zip --params best_params.json --data_
 python 3-visualize.py results/ --output-dir plots/
 ```
 
+### Option C: Reproducible `uv` Environment (Preferred)
+
+We maintain `pyproject.toml` and `uv.lock` so you can rely entirely on [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for dependency installation; nothing else is required. Follow the upstream installation guide to install `uv`, then execute:
+
+1. **Verify `uv` is available on your PATH**  
+
+   ```bash
+   uv --version
+   ```
+
+   This step confirms that you followed the official installation instructions and ensures `uv` can run commands.
+2. **Let `uv` set up the environment**  
+
+   ```bash
+   uv sync
+   ```
+
+   `uv sync` reads `pyproject.toml` and `uv.lock` so every transitive dependency is locked; the result works the same on every machine.
+3. **Activate the environment**  
+
+`uv` also respects the `.python-version` hint (Python 3.11), so you can skip manual Python installs when that matches your system. This pure `uv` workflow is now our default recommendation for new contributors.
+
 ## Components
 
 ### Data Pipeline
